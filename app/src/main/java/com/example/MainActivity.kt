@@ -20,6 +20,7 @@ import com.example.ui.screens.CustomerLedgerScreen
 import com.example.ui.screens.HomeScreen
 import com.example.ui.screens.InvoiceEditorScreen
 import com.example.ui.screens.LinedNoteScreen
+import com.example.ui.screens.ReportsScreen
 import com.example.ui.screens.ThermalPrintScreen
 import com.example.ui.theme.MyApplicationTheme
 import com.example.ui.viewmodel.CurrentScreen
@@ -61,6 +62,9 @@ class MainActivity : ComponentActivity() {
                             }
                             is CurrentScreen.AiAssistant -> {
                                 AiAssistantScreen(viewModel = viewModel)
+                            }
+                            is CurrentScreen.Reports -> {
+                                ReportsScreen(viewModel = viewModel, onBack = { viewModel.navigateBack() })
                             }
                             is CurrentScreen.Settings -> {
                                 com.example.ui.screens.SettingsScreen(viewModel = viewModel)
