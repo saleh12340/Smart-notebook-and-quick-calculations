@@ -472,7 +472,7 @@ fun InvoiceTableItemRow(
 
 /**
  * Customer Ledger Table Header:
- * [الرصيد التراكمي] (اليمين) | [له / دائن] | [عليه / مدين] | [التاريخ واليوم] | [التفاصيل]
+ * [التاريخ واليوم] (اليمين) | [التفاصيل والبيان] | [عليه / مدين] | [له / دائن] | [الرصيد] (اليسار)
  */
 @Composable
 fun LedgerTableHeader(
@@ -486,43 +486,7 @@ fun LedgerTableHeader(
             .padding(vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // الرصيد التراكمي (أول عمود من اليمين كما طلب المستخدم)
-        Text(
-            text = "الرصيد",
-            fontWeight = FontWeight.Bold,
-            fontSize = 11.sp,
-            color = Color.Black,
-            textAlign = TextAlign.Center,
-            modifier = Modifier.weight(1.2f)
-        )
-
-        Box(modifier = Modifier.width(1.dp).height(24.dp).background(LedgerBorderColor))
-
-        // له / دائن
-        Text(
-            text = "له (دائن)",
-            fontWeight = FontWeight.Bold,
-            fontSize = 11.sp,
-            color = Color(0xFF16A34A),
-            textAlign = TextAlign.Center,
-            modifier = Modifier.weight(1.0f)
-        )
-
-        Box(modifier = Modifier.width(1.dp).height(24.dp).background(LedgerBorderColor))
-
-        // عليه / مدين
-        Text(
-            text = "عليه (مدين)",
-            fontWeight = FontWeight.Bold,
-            fontSize = 11.sp,
-            color = Color(0xFFDC2626),
-            textAlign = TextAlign.Center,
-            modifier = Modifier.weight(1.0f)
-        )
-
-        Box(modifier = Modifier.width(1.dp).height(24.dp).background(LedgerBorderColor))
-
-        // التاريخ واليوم (مصغر ومثقل)
+        // 1. التاريخ واليوم (العمود الأول في الجهة اليمنى من الشاشة)
         Text(
             text = "التاريخ واليوم",
             fontWeight = FontWeight.Bold,
@@ -534,14 +498,50 @@ fun LedgerTableHeader(
 
         Box(modifier = Modifier.width(1.dp).height(24.dp).background(LedgerBorderColor))
 
-        // التفاصيل (مصغر وواضح)
+        // 2. التفاصيل والبيان
         Text(
-            text = "التفاصيل",
+            text = "البيان والتفاصيل",
             fontWeight = FontWeight.Bold,
             fontSize = 11.sp,
             color = Color.Black,
             textAlign = TextAlign.Center,
             modifier = Modifier.weight(2.0f)
+        )
+
+        Box(modifier = Modifier.width(1.dp).height(24.dp).background(LedgerBorderColor))
+
+        // 3. عليه / مدين
+        Text(
+            text = "عليه (مدين)",
+            fontWeight = FontWeight.Bold,
+            fontSize = 10.sp,
+            color = Color(0xFFDC2626),
+            textAlign = TextAlign.Center,
+            modifier = Modifier.weight(1.0f)
+        )
+
+        Box(modifier = Modifier.width(1.dp).height(24.dp).background(LedgerBorderColor))
+
+        // 4. له / دائن
+        Text(
+            text = "له (دائن)",
+            fontWeight = FontWeight.Bold,
+            fontSize = 10.sp,
+            color = Color(0xFF16A34A),
+            textAlign = TextAlign.Center,
+            modifier = Modifier.weight(1.0f)
+        )
+
+        Box(modifier = Modifier.width(1.dp).height(24.dp).background(LedgerBorderColor))
+
+        // 5. الرصيد التراكمي (الجهة اليسرى)
+        Text(
+            text = "الرصيد",
+            fontWeight = FontWeight.Bold,
+            fontSize = 11.sp,
+            color = Color.Black,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.weight(1.2f)
         )
 
         Spacer(modifier = Modifier.width(28.dp))
@@ -583,33 +583,43 @@ fun LedgerTableItemRow(
             .padding(vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // 1. الرصيد التراكمي (أول عمود من اليمين)
-        Text(
-            text = String.format(Locale.US, "%.0f", runningBalance),
-            style = TextStyle(
-                fontSize = 11.sp,
-                fontWeight = FontWeight.Bold,
-                color = if (runningBalance >= 0) Color(0xFFDC2626) else Color(0xFF16A34A),
-                textAlign = TextAlign.Center
-            ),
-            modifier = Modifier.weight(1.2f)
-        )
+        // 1. التاريخ واليوم (العمود الأول في الجهة اليمنى من الشاشة)
+        Column(
+            modifier = Modifier
+                .weight(1.3f)
+                .padding(horizontal = 2.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            BasicTextField(
+                value = dateStr,
+                onValueChange = onDateChange,
+                textStyle = TextStyle(fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color.Black, textAlign = TextAlign.Center),
+                singleLine = true
+            )
+            if (dayStr.isNotEmpty()) {
+                Text(
+                    text = dayStr,
+                    fontSize = 9.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.DarkGray
+                )
+            }
+        }
 
         Box(modifier = Modifier.width(1.dp).height(24.dp).background(PaperLineColor))
 
-        // 2. له / دائن (مقبوض)
+        // 2. التفاصيل والبيان
         BasicTextField(
-            value = if (credit == 0.0) "" else if (credit % 1 == 0.0) credit.toInt().toString() else credit.toString(),
-            onValueChange = { str -> onCreditChange(str.toDoubleOrNull() ?: 0.0) },
+            value = description,
+            onValueChange = onDescriptionChange,
             modifier = Modifier
-                .weight(1.0f)
-                .padding(horizontal = 2.dp)
-                .testTag("ledger_credit_$index"),
-            textStyle = TextStyle(fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF16A34A), textAlign = TextAlign.Center),
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                .weight(2.0f)
+                .padding(horizontal = 4.dp)
+                .testTag("ledger_desc_$index"),
+            textStyle = TextStyle(fontSize = 11.sp, color = Color.Black, textAlign = TextAlign.Start),
             singleLine = true,
             decorationBox = { inner ->
-                if (credit == 0.0) Text("-", color = Color.LightGray, fontSize = 11.sp, textAlign = TextAlign.Center)
+                if (description.isEmpty()) Text("بيان الحركة...", color = Color.LightGray, fontSize = 10.sp)
                 inner()
             }
         )
@@ -635,45 +645,35 @@ fun LedgerTableItemRow(
 
         Box(modifier = Modifier.width(1.dp).height(24.dp).background(PaperLineColor))
 
-        // 4. التاريخ واليوم (مصغر ومثقل)
-        Column(
+        // 4. له / دائن (مقبوض)
+        BasicTextField(
+            value = if (credit == 0.0) "" else if (credit % 1 == 0.0) credit.toInt().toString() else credit.toString(),
+            onValueChange = { str -> onCreditChange(str.toDoubleOrNull() ?: 0.0) },
             modifier = Modifier
-                .weight(1.3f)
-                .padding(horizontal = 2.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            BasicTextField(
-                value = dateStr,
-                onValueChange = onDateChange,
-                textStyle = TextStyle(fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color.Black, textAlign = TextAlign.Center),
-                singleLine = true
-            )
-            if (dayStr.isNotEmpty()) {
-                Text(
-                    text = dayStr,
-                    fontSize = 9.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Color.DarkGray
-                )
+                .weight(1.0f)
+                .padding(horizontal = 2.dp)
+                .testTag("ledger_credit_$index"),
+            textStyle = TextStyle(fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF16A34A), textAlign = TextAlign.Center),
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+            singleLine = true,
+            decorationBox = { inner ->
+                if (credit == 0.0) Text("-", color = Color.LightGray, fontSize = 11.sp, textAlign = TextAlign.Center)
+                inner()
             }
-        }
+        )
 
         Box(modifier = Modifier.width(1.dp).height(24.dp).background(PaperLineColor))
 
-        // 5. التفاصيل (مصغر وواضح)
-        BasicTextField(
-            value = description,
-            onValueChange = onDescriptionChange,
-            modifier = Modifier
-                .weight(2.0f)
-                .padding(horizontal = 4.dp)
-                .testTag("ledger_desc_$index"),
-            textStyle = TextStyle(fontSize = 11.sp, color = Color.Black, textAlign = TextAlign.Start),
-            singleLine = true,
-            decorationBox = { inner ->
-                if (description.isEmpty()) Text("بيان العملية...", color = Color.LightGray, fontSize = 10.sp)
-                inner()
-            }
+        // 5. الرصيد التراكمي (الجهة اليسرى)
+        Text(
+            text = String.format(Locale.US, "%.0f", runningBalance),
+            style = TextStyle(
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold,
+                color = if (runningBalance >= 0) Color(0xFFDC2626) else Color(0xFF16A34A),
+                textAlign = TextAlign.Center
+            ),
+            modifier = Modifier.weight(1.2f)
         )
 
         IconButton(

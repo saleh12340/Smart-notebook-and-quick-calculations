@@ -31,6 +31,7 @@ import androidx.compose.material.icons.filled.EditNote
 import androidx.compose.material.icons.filled.Print
 import androidx.compose.material.icons.filled.ReceiptLong
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
@@ -156,6 +157,18 @@ fun HomeScreen(
                             imageVector = Icons.Default.AutoAwesome,
                             contentDescription = "المساعد الذكي",
                             tint = Color(0xFFFDE047)
+                        )
+                    }
+
+                    // زر الإعدادات والنسخ الاحتياطي
+                    IconButton(
+                        onClick = { viewModel.navigateTo(CurrentScreen.Settings) },
+                        modifier = Modifier.testTag("settings_button")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Settings,
+                            contentDescription = "الإعدادات والنسخ الاحتياطي",
+                            tint = Color.White
                         )
                     }
                 },

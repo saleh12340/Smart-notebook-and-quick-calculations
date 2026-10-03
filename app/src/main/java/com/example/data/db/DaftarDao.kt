@@ -21,6 +21,10 @@ interface DaftarDao {
     fun getAllDocuments(): Flow<List<DocumentWithEntries>>
 
     @Transaction
+    @Query("SELECT * FROM documents ORDER BY updatedAt DESC")
+    suspend fun getAllDocumentsDirect(): List<DocumentWithEntries>
+
+    @Transaction
     @Query("SELECT * FROM documents WHERE docType = :type ORDER BY updatedAt DESC")
     fun getDocumentsByType(type: DocumentType): Flow<List<DocumentWithEntries>>
 

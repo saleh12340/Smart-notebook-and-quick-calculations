@@ -59,6 +59,9 @@ class MainActivity : ComponentActivity() {
                             is CurrentScreen.AiAssistant -> {
                                 AiAssistantScreen(viewModel = viewModel)
                             }
+                            is CurrentScreen.Settings -> {
+                                com.example.ui.screens.SettingsScreen(viewModel = viewModel)
+                            }
                         }
                     }
                 }

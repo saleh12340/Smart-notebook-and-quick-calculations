@@ -201,20 +201,23 @@ object ThermalPrintHelper {
             canvas.drawText("الإجمالي الكلي: ${String.format(Locale.US, "%.2f", docWithEntries.invoiceTotal)} ريال", width - 15f, y, textPaint)
             y += 28f
         } else if (doc.docType == DocumentType.CUSTOMER_LEDGER) {
-            canvas.drawText("التفاصيل", width - 15f, y, regularPaint)
-            canvas.drawText("له", width * 0.50f, y, regularPaint)
-            canvas.drawText("عليه", width * 0.30f, y, regularPaint)
-            canvas.drawText("الرصيد", 55f, y, regularPaint)
+            canvas.drawText("التاريخ", width - 15f, y, regularPaint)
+            canvas.drawText("البيان", width * 0.68f, y, regularPaint)
+            canvas.drawText("عليه", width * 0.38f, y, regularPaint)
+            canvas.drawText("له", width * 0.23f, y, regularPaint)
+            canvas.drawText("الرصيد", 50f, y, regularPaint)
             y += 8f
             canvas.drawLine(10f, y, width - 10f, y, linePaint)
             y += 24f
 
             regularPaint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
             for (item in entries) {
-                canvas.drawText(item.description.take(14), width - 15f, y, regularPaint)
-                canvas.drawText(if (item.credit > 0) String.format(Locale.US, "%.0f", item.credit) else "-", width * 0.50f, y, regularPaint)
-                canvas.drawText(if (item.debit > 0) String.format(Locale.US, "%.0f", item.debit) else "-", width * 0.30f, y, regularPaint)
-                canvas.drawText(String.format(Locale.US, "%.0f", item.runningBalance), 55f, y, regularPaint)
+                val dt = item.entryDate.takeLast(5) // MM/dd
+                canvas.drawText(dt, width - 15f, y, regularPaint)
+                canvas.drawText(item.description.take(10), width * 0.68f, y, regularPaint)
+                canvas.drawText(if (item.debit > 0) String.format(Locale.US, "%.0f", item.debit) else "-", width * 0.38f, y, regularPaint)
+                canvas.drawText(if (item.credit > 0) String.format(Locale.US, "%.0f", item.credit) else "-", width * 0.23f, y, regularPaint)
+                canvas.drawText(String.format(Locale.US, "%.0f", item.runningBalance), 50f, y, regularPaint)
                 y += 24f
             }
 
@@ -335,14 +338,15 @@ object ThermalPrintHelper {
                 sb.append("الإجمالي الكلي: $totalStr\n")
             }
             DocumentType.CUSTOMER_LEDGER -> {
-                sb.append(formatLedgerRow("التفاصيل", "له", "عليه", "الرصيد"))
+                sb.append(formatLedgerRow("التاريخ", "البيان", "عليه", "له", "الرصيد"))
                 sb.append(divider)
                 for (item in entries) {
-                    val desc = item.description.take(14)
-                    val credit = if (item.credit > 0) String.format(Locale.US, "%.0f", item.credit) else "-"
+                    val dt = item.entryDate.takeLast(5)
+                    val desc = item.description.take(12)
                     val debit = if (item.debit > 0) String.format(Locale.US, "%.0f", item.debit) else "-"
+                    val credit = if (item.credit > 0) String.format(Locale.US, "%.0f", item.credit) else "-"
                     val bal = String.format(Locale.US, "%.0f", item.runningBalance)
-                    sb.append(formatLedgerRow(desc, credit, debit, bal))
+                    sb.append(formatLedgerRow(dt, desc, debit, credit, bal))
                 }
                 sb.append(divider)
                 sb.append("إجمالي له (دائن): ${String.format(Locale.US, "%.2f", docWithEntries.totalCredit)} ريال\n")
@@ -375,8 +379,8 @@ object ThermalPrintHelper {
         return String.format(Locale.US, "%-16s %-6s %-8s %-9s\n", col1, col2, col3, col4)
     }
 
-    private fun formatLedgerRow(col1: String, col2: String, col3: String, col4: String): String {
-        return String.format(Locale.US, "%-14s %-8s %-8s %-10s\n", col1, col2, col3, col4)
+    private fun formatLedgerRow(col1: String, col2: String, col3: String, col4: String, col5: String): String {
+        return String.format(Locale.US, "%-6s %-12s %-6s %-6s %-8s\n", col1, col2, col3, col4, col5)
     }
 
     /**
@@ -435,8 +439,8 @@ object ThermalPrintHelper {
             for (item in entries) {
                 itemsHtml.append("""
                     <tr class="line-row">
-                        <td class="col-desc">${item.description}</td>
                         <td class="col-date">${item.entryDate}</td>
+                        <td class="col-desc">${item.description}</td>
                         <td class="col-price">${if (item.debit > 0) String.format(Locale.US, "%.2f", item.debit) else "-"}</td>
                         <td class="col-price">${if (item.credit > 0) String.format(Locale.US, "%.2f", item.credit) else "-"}</td>
                         <td class="col-total">${String.format(Locale.US, "%.2f", item.runningBalance)}</td>
@@ -527,10 +531,10 @@ object ThermalPrintHelper {
                         </tr>
                     """ else """
                         <tr>
-                            <th class="text-right">التفاصيل</th>
-                            <th>التاريخ</th>
-                            <th>مدين</th>
-                            <th>دائن</th>
+                            <th class="text-right">التاريخ</th>
+                            <th class="text-right">البيان</th>
+                            <th>عليه (مدين)</th>
+                            <th>له (دائن)</th>
                             <th>الرصيد</th>
                         </tr>
                     """}

@@ -1,11 +1,13 @@
 package com.example.ui.viewmodel
 
 import android.app.Application
+import android.content.Context
 import android.graphics.Bitmap
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.ai.ChatMessage
 import com.example.ai.GeminiService
+import com.example.data.backup.BackupHelper
 import com.example.data.db.DaftarDatabase
 import com.example.data.model.DocumentEntity
 import com.example.data.model.DocumentEntryEntity
@@ -30,6 +32,7 @@ sealed class CurrentScreen {
     data class LinedNote(val docId: Long = 0) : CurrentScreen()
     data class ThermalPrint(val docId: Long) : CurrentScreen()
     data object AiAssistant : CurrentScreen()
+    data object Settings : CurrentScreen()
 }
 
 class DaftarViewModel(application: Application) : AndroidViewModel(application) {
@@ -120,6 +123,12 @@ class DaftarViewModel(application: Application) : AndroidViewModel(application) 
         val dayFormat = SimpleDateFormat("EEEE", Locale("ar"))
         val now = Date()
         val randomNum = String.format(Locale.US, "%07d", (100..9999).random())
+        val prefs = getApplication<Application>().getSharedPreferences("app_settings", Context.MODE_PRIVATE)
+        val sName = prefs.getString("store_name", "بقالة العزي") ?: "بقالة العزي"
+        val sPhone = prefs.getString("store_phone", "776425052") ?: "776425052"
+        val sAddress = prefs.getString("store_address", "السوق العام") ?: "السوق العام"
+        val sReg = prefs.getString("commercial_reg", "101000") ?: "101000"
+        val sSeller = prefs.getString("seller_name", "المحاسب") ?: "المحاسب"
 
         return DocumentEntity(
             docNumber = randomNum,
@@ -131,16 +140,16 @@ class DaftarViewModel(application: Application) : AndroidViewModel(application) 
             customerName = "",
             docType = type,
             paymentType = PaymentType.CASH,
-            storeName = "بقالة العزي",
-            storeAddress = "السوق العام",
-            storePhone = "776425052",
-            commercialReg = "45120",
+            storeName = sName,
+            storeAddress = sAddress,
+            storePhone = sPhone,
+            commercialReg = sReg,
             poBox = "302",
             fax = "",
             dateString = dateFormat.format(now),
             dayString = dayFormat.format(now),
             notes = "",
-            sellerSignature = "المسؤول"
+            sellerSignature = sSeller
         )
     }
 
@@ -317,8 +326,40 @@ class DaftarViewModel(application: Application) : AndroidViewModel(application) 
 
             val savedId = repository.saveDocument(doc, entriesToSave)
             _activeDocument.value = doc.copy(id = savedId)
+            // حفظ نسخة احتياطية تلقائية فورية عند الحفظ
+            BackupHelper.performAutoBackupIfEnabled(getApplication(), repository.dao, doc.storeName)
             onSaved(savedId)
         }
+    }
+
+    // --- Backup & Restore Methods ---
+    fun triggerAutoBackup() {
+        viewModelScope.launch {
+            BackupHelper.performAutoBackupIfEnabled(getApplication(), repository.dao, _activeDocument.value.storeName)
+        }
+    }
+
+    suspend fun exportManualBackup(context: Context) {
+        BackupHelper.exportManualBackup(context, repository.dao, _activeDocument.value.storeName)
+    }
+
+    suspend fun restoreBackupFromJson(context: Context, json: String, onComplete: (Result<Int>) -> Unit) {
+        val res = BackupHelper.restoreFromJson(context, repository.dao, json)
+        onComplete(res)
+    }
+
+    suspend fun restoreLatestAutoBackup(context: Context, onComplete: (Result<Int>) -> Unit) {
+        val res = BackupHelper.restoreLatestAutoBackup(context, repository.dao)
+        onComplete(res)
+    }
+
+    fun updateDefaultStoreProfile(name: String, phone: String, address: String) {
+        val cur = _activeDocument.value
+        _activeDocument.value = cur.copy(
+            storeName = name,
+            storePhone = phone,
+            storeAddress = address
+        )
     }
 
     fun deleteDocument(id: Long) {

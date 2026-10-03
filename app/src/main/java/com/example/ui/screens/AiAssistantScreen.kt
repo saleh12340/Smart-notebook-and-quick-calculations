@@ -35,7 +35,9 @@ import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.FilterDrama
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Psychology
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.VolumeUp
+import com.example.ui.viewmodel.CurrentScreen
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -120,6 +122,15 @@ fun AiAssistantScreen(
                         )
                     }
                 },
+                actions = {
+                    IconButton(onClick = { viewModel.navigateTo(CurrentScreen.Settings) }) {
+                        Icon(
+                            imageVector = Icons.Default.Settings,
+                            contentDescription = "الإعدادات ومفتاح API",
+                            tint = Color.White
+                        )
+                    }
+                },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = Color(0xFF0F172A)
                 )
@@ -179,23 +190,26 @@ fun ChatTabContent(
     }
 
     Column(modifier = Modifier.fillMaxSize()) {
-        // شريط اختيار النموذج المطلوب (gemini-3.5-flash / gemini-3.1-pro-preview / gemini-3.1-flash-lite)
+        // شريط اختيار النموذج المطلوب مع التمرير الأفقي السلس
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .background(Color(0xFFF1F5F9))
-                .padding(horizontal = 10.dp, vertical = 6.dp),
+                .padding(horizontal = 8.dp, vertical = 6.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text("النموذج:", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.DarkGray)
             Spacer(modifier = Modifier.width(6.dp))
 
-            LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            LazyRow(
+                modifier = Modifier.weight(1f),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
                 item {
                     FilterChip(
                         selected = selectedModel == "gemini-3.5-flash",
                         onClick = { viewModel.setSelectedAiModel("gemini-3.5-flash") },
-                        label = { Text("3.5 Flash (عام)", fontSize = 11.sp) },
+                        label = { Text("3.5 Flash (شامل)", fontSize = 11.sp) },
                         colors = FilterChipDefaults.filterChipColors(
                             selectedContainerColor = Color(0xFF1E3A8A),
                             selectedLabelColor = Color.White
@@ -206,7 +220,7 @@ fun ChatTabContent(
                     FilterChip(
                         selected = selectedModel == "gemini-3.1-pro-preview",
                         onClick = { viewModel.setSelectedAiModel("gemini-3.1-pro-preview") },
-                        label = { Text("3.1 Pro (محاسبة معقدة)", fontSize = 11.sp) },
+                        label = { Text("3.1 Pro (تحليل متقدم)", fontSize = 11.sp) },
                         colors = FilterChipDefaults.filterChipColors(
                             selectedContainerColor = Color(0xFF1E3A8A),
                             selectedLabelColor = Color.White

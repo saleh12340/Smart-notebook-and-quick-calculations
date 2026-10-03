@@ -7,7 +7,7 @@ import com.example.data.model.DocumentType
 import com.example.data.model.DocumentWithEntries
 import kotlinx.coroutines.flow.Flow
 
-class DaftarRepository(private val dao: DaftarDao) {
+class DaftarRepository(val dao: DaftarDao) {
 
     val allDocuments: Flow<List<DocumentWithEntries>> = dao.getAllDocuments()
 
