@@ -271,23 +271,7 @@ fun InvoiceEditorScreen(
                         )
                     }
 
-                    Spacer(modifier = Modifier.height(4.dp))
-
-                    // زر إضافة صنف جديد بين الأسطر
-                    Button(
-                        onClick = { viewModel.addInvoiceEntry() },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .testTag("add_item_row_button"),
-                        shape = RoundedCornerShape(6.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1E40AF))
-                    ) {
-                        Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text("إضافة سطر صنف جديد", fontWeight = FontWeight.Bold, fontSize = 12.sp)
-                    }
-
-                    Spacer(modifier = Modifier.height(8.dp))
+                    Spacer(modifier = Modifier.height(6.dp))
 
                     // 5. تذييل الفاتورة: TOTAL الإجمالي + التحذير المطبوع + التواقيع
                     InvoiceOfficialFooter(

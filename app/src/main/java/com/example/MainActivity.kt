@@ -56,6 +56,9 @@ class MainActivity : ComponentActivity() {
                             is CurrentScreen.ThermalPrint -> {
                                 ThermalPrintScreen(viewModel = viewModel, docId = screen.docId)
                             }
+                            is CurrentScreen.CustomerProfile -> {
+                                com.example.ui.screens.CustomerProfileScreen(viewModel = viewModel, customerName = screen.customerName)
+                            }
                             is CurrentScreen.AiAssistant -> {
                                 AiAssistantScreen(viewModel = viewModel)
                             }

@@ -303,23 +303,7 @@ fun CustomerLedgerScreen(
                         )
                     }
 
-                    Spacer(modifier = Modifier.height(4.dp))
-
-                    // زر إضافة قيد / عملية جديدة
-                    Button(
-                        onClick = { viewModel.addLedgerEntry() },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .testTag("add_ledger_row_button"),
-                        shape = RoundedCornerShape(6.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF16A34A))
-                    ) {
-                        Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text("إضافة عملية جديدة (قيد)", fontWeight = FontWeight.Bold, fontSize = 12.sp)
-                    }
-
-                    Spacer(modifier = Modifier.height(8.dp))
+                    Spacer(modifier = Modifier.height(6.dp))
 
                     // التجميع السفلي للعمليات
                     Column(

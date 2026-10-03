@@ -262,8 +262,8 @@ fun CustomerInputLine(
 }
 
 /**
- * Invoice Table Header matching photo:
- * [التفاصيل Description] | [العدد Qty] | [سعر الوحدة Unit Price ريال] | [القيمة الإجمالية Total Amount ريال]
+ * Invoice Table Header:
+ * [الإجمالي Total] (اليمين) | [العدد Qty] | [سعر الوحدة Unit Price] | [التفاصيل Description] (اليسار)
  */
 @Composable
 fun InvoiceTableHeader(
@@ -277,23 +277,23 @@ fun InvoiceTableHeader(
             .padding(vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // التفاصيل / Description
+        // 1. القيمة الإجمالية / Total Amount (العمود الأول من جهة اليمين)
         Column(
             modifier = Modifier
-                .weight(2.2f)
-                .padding(horizontal = 2.dp),
+                .weight(1.3f)
+                .padding(horizontal = 1.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Text(text = "التفاصـيـل", fontWeight = FontWeight.Bold, fontSize = 11.sp, color = Color.Black)
-            Text(text = "Description", fontSize = 8.sp, color = Color.DarkGray)
+            Text(text = "الإجمالي", fontWeight = FontWeight.Bold, fontSize = 10.sp, color = Color.Black)
+            Text(text = "مجموع (ريال)", fontSize = 8.sp, color = Color.DarkGray)
         }
 
         Box(modifier = Modifier.width(1.dp).height(24.dp).background(LedgerBorderColor))
 
-        // العدد / Qty
+        // 2. العدد / الكمية (Qty)
         Column(
             modifier = Modifier
-                .weight(0.8f)
+                .weight(0.9f)
                 .padding(horizontal = 1.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
@@ -303,10 +303,10 @@ fun InvoiceTableHeader(
 
         Box(modifier = Modifier.width(1.dp).height(24.dp).background(LedgerBorderColor))
 
-        // سعر الوحدة / Unit Price (ريال)
+        // 3. سعر الوحدة / Unit Price (ريال)
         Column(
             modifier = Modifier
-                .weight(1.2f)
+                .weight(1.1f)
                 .padding(horizontal = 1.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
@@ -316,15 +316,15 @@ fun InvoiceTableHeader(
 
         Box(modifier = Modifier.width(1.dp).height(24.dp).background(LedgerBorderColor))
 
-        // القيمة الإجمالية / Total Amount (ريال)
+        // 4. التفاصيل / Description (الجهة اليسرى)
         Column(
             modifier = Modifier
-                .weight(1.3f)
-                .padding(horizontal = 1.dp),
+                .weight(2.2f)
+                .padding(horizontal = 2.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Text(text = "الإجمالي", fontWeight = FontWeight.Bold, fontSize = 10.sp, color = Color.Black)
-            Text(text = "مجموع (ريال)", fontSize = 8.sp, color = Color.DarkGray)
+            Text(text = "التفاصـيـل", fontWeight = FontWeight.Bold, fontSize = 11.sp, color = Color.Black)
+            Text(text = "Description", fontSize = 8.sp, color = Color.DarkGray)
         }
 
         Spacer(modifier = Modifier.width(28.dp)) // Space for delete icon alignment
@@ -364,71 +364,7 @@ fun InvoiceTableItemRow(
             .padding(vertical = 3.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // Description field (between lines)
-        BasicTextField(
-            value = description,
-            onValueChange = onDescriptionChange,
-            modifier = Modifier
-                .weight(2.2f)
-                .padding(horizontal = 2.dp)
-                .testTag("item_desc_$index"),
-            textStyle = TextStyle(fontSize = 11.sp, color = Color.Black, textAlign = TextAlign.Start),
-            singleLine = true,
-            decorationBox = { inner ->
-                if (description.isEmpty()) {
-                    Text("اكتب الصنف...", color = Color.LightGray, fontSize = 10.sp)
-                }
-                inner()
-            }
-        )
-
-        Box(modifier = Modifier.width(1.dp).height(22.dp).background(PaperLineColor))
-
-        // Quantity field
-        BasicTextField(
-            value = if (quantity == 0.0) "" else if (quantity % 1 == 0.0) quantity.toInt().toString() else quantity.toString(),
-            onValueChange = { str ->
-                val num = str.toDoubleOrNull() ?: 0.0
-                onQuantityChange(num)
-            },
-            modifier = Modifier
-                .weight(0.8f)
-                .padding(horizontal = 1.dp)
-                .testTag("item_qty_$index"),
-            textStyle = TextStyle(fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = Color.Black, textAlign = TextAlign.Center),
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-            singleLine = true,
-            decorationBox = { inner ->
-                if (quantity == 0.0) Text("1", color = Color.LightGray, fontSize = 10.sp, textAlign = TextAlign.Center)
-                inner()
-            }
-        )
-
-        Box(modifier = Modifier.width(1.dp).height(24.dp).background(PaperLineColor))
-
-        // Unit Price field (سعر الوحدة)
-        BasicTextField(
-            value = if (unitPrice == 0.0) "" else if (unitPrice % 1 == 0.0) unitPrice.toInt().toString() else String.format(Locale.US, "%.2f", unitPrice),
-            onValueChange = { str ->
-                val num = str.toDoubleOrNull() ?: 0.0
-                onUnitPriceChange(num)
-            },
-            modifier = Modifier
-                .weight(1.2f)
-                .padding(horizontal = 2.dp)
-                .testTag("item_price_$index"),
-            textStyle = TextStyle(fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = Color.Black, textAlign = TextAlign.Center),
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-            singleLine = true,
-            decorationBox = { inner ->
-                if (unitPrice == 0.0) Text("0.0", color = Color.LightGray, fontSize = 11.sp, textAlign = TextAlign.Center)
-                inner()
-            }
-        )
-
-        Box(modifier = Modifier.width(1.dp).height(24.dp).background(PaperLineColor))
-
-        // Total Amount field (القيمة الإجمالية - متاحة للإدخال المباشر)
+        // 1. Total Amount field (القيمة الإجمالية - أول عمود من اليمين)
         BasicTextField(
             value = if (totalAmount == 0.0) "" else if (totalAmount % 1 == 0.0) totalAmount.toInt().toString() else String.format(Locale.US, "%.2f", totalAmount),
             onValueChange = { str ->
@@ -449,6 +385,70 @@ fun InvoiceTableItemRow(
             singleLine = true,
             decorationBox = { inner ->
                 if (totalAmount == 0.0) Text("0.0", color = Color.LightGray, fontSize = 11.sp, textAlign = TextAlign.Center)
+                inner()
+            }
+        )
+
+        Box(modifier = Modifier.width(1.dp).height(24.dp).background(PaperLineColor))
+
+        // 2. Quantity field (العدد / الكمية)
+        BasicTextField(
+            value = if (quantity == 0.0) "" else if (quantity % 1 == 0.0) quantity.toInt().toString() else quantity.toString(),
+            onValueChange = { str ->
+                val num = str.toDoubleOrNull() ?: 0.0
+                onQuantityChange(num)
+            },
+            modifier = Modifier
+                .weight(0.9f)
+                .padding(horizontal = 1.dp)
+                .testTag("item_qty_$index"),
+            textStyle = TextStyle(fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = Color.Black, textAlign = TextAlign.Center),
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+            singleLine = true,
+            decorationBox = { inner ->
+                if (quantity == 0.0) Text("1", color = Color.LightGray, fontSize = 10.sp, textAlign = TextAlign.Center)
+                inner()
+            }
+        )
+
+        Box(modifier = Modifier.width(1.dp).height(24.dp).background(PaperLineColor))
+
+        // 3. Unit Price field (سعر الوحدة)
+        BasicTextField(
+            value = if (unitPrice == 0.0) "" else if (unitPrice % 1 == 0.0) unitPrice.toInt().toString() else String.format(Locale.US, "%.2f", unitPrice),
+            onValueChange = { str ->
+                val num = str.toDoubleOrNull() ?: 0.0
+                onUnitPriceChange(num)
+            },
+            modifier = Modifier
+                .weight(1.1f)
+                .padding(horizontal = 2.dp)
+                .testTag("item_price_$index"),
+            textStyle = TextStyle(fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = Color.Black, textAlign = TextAlign.Center),
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+            singleLine = true,
+            decorationBox = { inner ->
+                if (unitPrice == 0.0) Text("0.0", color = Color.LightGray, fontSize = 11.sp, textAlign = TextAlign.Center)
+                inner()
+            }
+        )
+
+        Box(modifier = Modifier.width(1.dp).height(24.dp).background(PaperLineColor))
+
+        // 4. Description field (التفاصيل والبيان)
+        BasicTextField(
+            value = description,
+            onValueChange = onDescriptionChange,
+            modifier = Modifier
+                .weight(2.2f)
+                .padding(horizontal = 2.dp)
+                .testTag("item_desc_$index"),
+            textStyle = TextStyle(fontSize = 11.sp, color = Color.Black, textAlign = TextAlign.Start),
+            singleLine = true,
+            decorationBox = { inner ->
+                if (description.isEmpty()) {
+                    Text("اكتب الصنف...", color = Color.LightGray, fontSize = 10.sp)
+                }
                 inner()
             }
         )

@@ -1,5 +1,7 @@
 package com.example.ui.screens
 
+import android.content.Context
+import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -16,10 +18,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.filled.Add
@@ -28,12 +30,15 @@ import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.EditNote
+import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.PersonAdd
 import androidx.compose.material.icons.filled.Print
 import androidx.compose.material.icons.filled.ReceiptLong
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DropdownMenu
@@ -44,11 +49,13 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Tab
+import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -56,6 +63,7 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -67,15 +75,16 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.model.DocumentType
 import com.example.data.model.DocumentWithEntries
 import com.example.data.model.PaymentType
-import com.example.print.ThermalPrintHelper
 import com.example.ui.components.StampRed
 import com.example.ui.viewmodel.CurrentScreen
+import com.example.ui.viewmodel.CustomerSummary
 import com.example.ui.viewmodel.DaftarViewModel
 import java.util.Locale
 
@@ -88,29 +97,93 @@ fun HomeScreen(
     val context = LocalContext.current
     val allDocs by viewModel.allDocuments.collectAsState()
     val searchQuery by viewModel.searchQuery.collectAsState()
-    val selectedFilter by viewModel.selectedFilter.collectAsState()
 
+    var selectedTab by remember { mutableIntStateOf(0) } // 0: حسابات العملاء, 1: الملاحظات الدفترية
     var showFabMenu by remember { mutableStateOf(false) }
+    var showAddCustomerDialog by remember { mutableStateOf(false) }
+    var newCustomerName by remember { mutableStateOf("") }
+    var newCustomerInitialDebit by remember { mutableStateOf("") }
     var docToDelete by remember { mutableStateOf<DocumentWithEntries?>(null) }
 
-    // Filter documents
-    val filteredDocs = allDocs.filter { docWithEntries ->
-        val matchesFilter = selectedFilter == null || docWithEntries.document.docType == selectedFilter
-        val matchesSearch = if (searchQuery.isBlank()) true else {
-            val q = searchQuery.trim().lowercase()
-            docWithEntries.document.customerName.lowercase().contains(q) ||
-            docWithEntries.document.docNumber.lowercase().contains(q) ||
-            docWithEntries.document.title.lowercase().contains(q) ||
-            docWithEntries.entries.any { it.description.lowercase().contains(q) }
+    // تجميع حسابات الأشخاص والعملاء
+    val customerMap = remember(allDocs) {
+        val map = mutableMapOf<String, MutableList<DocumentWithEntries>>()
+        allDocs.forEach { docWithEntries ->
+            val cName = docWithEntries.document.customerName.trim()
+            if (cName.isNotEmpty()) {
+                map.getOrPut(cName) { mutableListOf() }.add(docWithEntries)
+            }
         }
-        matchesFilter && matchesSearch
+        map
     }
 
-    // Summary calculations
-    val totalInvoicesSum = allDocs.filter { it.document.docType == DocumentType.SALES_INVOICE }.sumOf { it.invoiceTotal }
-    val totalLedgerDebit = allDocs.filter { it.document.docType == DocumentType.CUSTOMER_LEDGER }.sumOf { it.totalDebit }
-    val totalLedgerCredit = allDocs.filter { it.document.docType == DocumentType.CUSTOMER_LEDGER }.sumOf { it.totalCredit }
-    val notesCount = allDocs.count { it.document.docType == DocumentType.LINED_NOTE }
+    val customerSummaries = remember(customerMap) {
+        customerMap.map { (name, docs) ->
+            var totalDebit = 0.0
+            var totalCredit = 0.0
+            var totalInvoices = 0.0
+            var latestDate = ""
+            var latestUpdated = 0L
+
+            docs.forEach { d ->
+                if (d.document.updatedAt > latestUpdated) {
+                    latestUpdated = d.document.updatedAt
+                    latestDate = d.document.dateString
+                }
+                when (d.document.docType) {
+                    DocumentType.SALES_INVOICE -> {
+                        val invTotal = d.invoiceTotal
+                        totalInvoices += invTotal
+                        if (d.document.paymentType == PaymentType.CREDIT) {
+                            totalDebit += invTotal
+                        }
+                    }
+                    DocumentType.CUSTOMER_LEDGER -> {
+                        totalDebit += d.totalDebit
+                        totalCredit += d.totalCredit
+                    }
+                    DocumentType.LINED_NOTE -> {}
+                }
+            }
+
+            CustomerSummary(
+                customerName = name,
+                totalDebit = totalDebit,
+                totalCredit = totalCredit,
+                netBalance = totalDebit - totalCredit,
+                totalInvoicesAmount = totalInvoices,
+                documentCount = docs.size,
+                lastDate = latestDate,
+                lastUpdatedAt = latestUpdated
+            )
+        }.sortedByDescending { it.lastUpdatedAt }
+    }
+
+    // فلترة العملاء بالبحث
+    val filteredCustomers = remember(customerSummaries, searchQuery) {
+        if (searchQuery.isBlank()) {
+            customerSummaries
+        } else {
+            val q = searchQuery.trim().lowercase()
+            customerSummaries.filter { it.customerName.lowercase().contains(q) }
+        }
+    }
+
+    // فلترة الملاحظات العامة
+    val generalNotes = remember(allDocs, searchQuery) {
+        allDocs.filter { it.document.docType == DocumentType.LINED_NOTE }.filter { noteDoc ->
+            if (searchQuery.isBlank()) true else {
+                val q = searchQuery.trim().lowercase()
+                noteDoc.document.title.lowercase().contains(q) ||
+                noteDoc.document.notes.lowercase().contains(q) ||
+                noteDoc.document.customerName.lowercase().contains(q)
+            }
+        }
+    }
+
+    // إجماليات المحل العامة
+    val grandTotalDebt = customerSummaries.filter { it.netBalance > 0 }.sumOf { it.netBalance }
+    val grandTotalCredit = customerSummaries.filter { it.netBalance < 0 }.sumOf { Math.abs(it.netBalance) }
 
     Scaffold(
         topBar = {
@@ -140,7 +213,7 @@ fun HomeScreen(
                                 color = Color.White
                             )
                             Text(
-                                text = "كتابة بين الأسطر وطباعة حرارية",
+                                text = "بقالة العزي — إدارة حسابات العملاء",
                                 fontSize = 11.sp,
                                 color = Color.White.copy(alpha = 0.8f)
                             )
@@ -185,51 +258,36 @@ fun HomeScreen(
                     text = { Text("إضافة جديدة", fontWeight = FontWeight.Bold) },
                     containerColor = Color(0xFF1E3A8A),
                     contentColor = Color.White,
-                    modifier = Modifier.testTag("add_new_fab")
+                    modifier = Modifier.testTag("home_add_fab")
                 )
 
                 DropdownMenu(
                     expanded = showFabMenu,
                     onDismissRequest = { showFabMenu = false }
                 ) {
+                    // 1. إضافة عميل جديد
                     DropdownMenuItem(
                         text = {
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(Icons.Default.ReceiptLong, contentDescription = null, tint = Color(0xFF1E3A8A))
+                                Icon(Icons.Default.PersonAdd, contentDescription = null, tint = Color(0xFF1E3A8A))
                                 Spacer(modifier = Modifier.width(8.dp))
-                                Text("فاتورة أصناف (كما في الصورة)", fontWeight = FontWeight.SemiBold)
+                                Text("إضافة عميل جديد (حساب شخص)", fontWeight = FontWeight.SemiBold)
                             }
                         },
                         onClick = {
                             showFabMenu = false
-                            viewModel.loadDocument(0L, DocumentType.SALES_INVOICE)
-                            viewModel.navigateTo(CurrentScreen.InvoiceEditor(0L))
+                            showAddCustomerDialog = true
                         },
-                        modifier = Modifier.testTag("new_sales_invoice_menu")
+                        modifier = Modifier.testTag("menu_add_customer")
                     )
 
+                    // 2. إضافة ملاحظة دفترية
                     DropdownMenuItem(
                         text = {
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(Icons.AutoMirrored.Filled.MenuBook, contentDescription = null, tint = Color(0xFF16A34A))
+                                Icon(Icons.Default.EditNote, contentDescription = null, tint = Color(0xFF475569))
                                 Spacer(modifier = Modifier.width(8.dp))
-                                Text("كشف حساب عميل (دفتر الحسابات)", fontWeight = FontWeight.SemiBold)
-                            }
-                        },
-                        onClick = {
-                            showFabMenu = false
-                            viewModel.loadDocument(0L, DocumentType.CUSTOMER_LEDGER)
-                            viewModel.navigateTo(CurrentScreen.CustomerLedger(0L))
-                        },
-                        modifier = Modifier.testTag("new_customer_ledger_menu")
-                    )
-
-                    DropdownMenuItem(
-                        text = {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(Icons.Default.EditNote, contentDescription = null, tint = Color(0xFFD97706))
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text("ملاحظة مسطرة جديدة", fontWeight = FontWeight.SemiBold)
+                                Text("إضافة ملاحظة دفترية", fontWeight = FontWeight.SemiBold)
                             }
                         },
                         onClick = {
@@ -237,7 +295,7 @@ fun HomeScreen(
                             viewModel.loadDocument(0L, DocumentType.LINED_NOTE)
                             viewModel.navigateTo(CurrentScreen.LinedNote(0L))
                         },
-                        modifier = Modifier.testTag("new_lined_note_menu")
+                        modifier = Modifier.testTag("menu_add_note")
                     )
                 }
             }
@@ -247,22 +305,66 @@ fun HomeScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .background(Color(0xFFF8FAFC))
+                .background(Color(0xFFF1F5F9))
                 .padding(innerPadding)
         ) {
-            // شريط الإحصائيات السريعة
-            QuickStatsBar(
-                invoicesSum = totalInvoicesSum,
-                ledgerDebit = totalLedgerDebit,
-                ledgerCredit = totalLedgerCredit,
-                notesCount = notesCount
-            )
+            // بطاقة الملخص المالي الإجمالي
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                shape = RoundedCornerShape(12.dp),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFF1E293B)),
+                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 14.dp, vertical = 12.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column {
+                        Text(text = "إجمالي الديون في السوق (لنا):", fontSize = 11.sp, color = Color(0xFFCBD5E1))
+                        Text(
+                            text = "${String.format(Locale.US, "%.0f", grandTotalDebt)} ريال",
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = Color(0xFFF87171)
+                        )
+                    }
+
+                    Box(modifier = Modifier.width(1.dp).height(30.dp).background(Color(0xFF475569)))
+
+                    Column {
+                        Text(text = "فائض أرصدة العملاء (لهم):", fontSize = 11.sp, color = Color(0xFFCBD5E1))
+                        Text(
+                            text = "${String.format(Locale.US, "%.0f", grandTotalCredit)} ريال",
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = Color(0xFF4ADE80)
+                        )
+                    }
+
+                    Box(modifier = Modifier.width(1.dp).height(30.dp).background(Color(0xFF475569)))
+
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(text = "العملاء", fontSize = 11.sp, color = Color(0xFFCBD5E1))
+                        Text(
+                            text = "${customerSummaries.size}",
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = Color.White
+                        )
+                    }
+                }
+            }
 
             // شريط البحث
             OutlinedTextField(
                 value = searchQuery,
                 onValueChange = { viewModel.setSearchQuery(it) },
-                placeholder = { Text("بحث باسم العميل أو رقم الفاتورة...", fontSize = 13.sp) },
+                placeholder = { Text("بحث عن اسم عميل أو ملاحظة...", fontSize = 13.sp) },
                 leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, tint = Color.Gray) },
                 trailingIcon = {
                     if (searchQuery.isNotEmpty()) {
@@ -273,156 +375,259 @@ fun HomeScreen(
                 },
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 12.dp, vertical = 6.dp)
-                    .testTag("home_search_input"),
+                    .padding(horizontal = 12.dp, vertical = 4.dp),
+                shape = RoundedCornerShape(10.dp),
                 singleLine = true,
-                shape = RoundedCornerShape(12.dp),
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedContainerColor = Color.White,
                     unfocusedContainerColor = Color.White,
-                    focusedBorderColor = Color(0xFF1E3A8A),
-                    unfocusedBorderColor = Color(0xFFCBD5E1)
+                    focusedBorderColor = Color(0xFF1E3A8A)
                 )
             )
 
-            // أزرار التصفية (الكل، فواتير أصناف، حسابات عملاء، ملاحظات)
-            LazyRow(
-                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            // علامات التبويب الرئيسية (حسابات العملاء / الملاحظات الدفترية)
+            TabRow(
+                selectedTabIndex = selectedTab,
+                containerColor = Color.White,
+                contentColor = Color(0xFF1E3A8A),
+                modifier = Modifier.padding(top = 4.dp)
             ) {
-                item {
-                    FilterChip(
-                        selected = selectedFilter == null,
-                        onClick = { viewModel.setSelectedFilter(null) },
-                        label = { Text("الكل (${allDocs.size})", fontWeight = FontWeight.Bold, fontSize = 12.sp) },
-                        colors = FilterChipDefaults.filterChipColors(
-                            selectedContainerColor = Color(0xFF0F172A),
-                            selectedLabelColor = Color.White
-                        )
-                    )
-                }
-                item {
-                    FilterChip(
-                        selected = selectedFilter == DocumentType.SALES_INVOICE,
-                        onClick = { viewModel.setSelectedFilter(DocumentType.SALES_INVOICE) },
-                        label = { Text("فواتير الأصناف", fontWeight = FontWeight.Bold, fontSize = 12.sp) },
-                        colors = FilterChipDefaults.filterChipColors(
-                            selectedContainerColor = Color(0xFF1E3A8A),
-                            selectedLabelColor = Color.White
-                        )
-                    )
-                }
-                item {
-                    FilterChip(
-                        selected = selectedFilter == DocumentType.CUSTOMER_LEDGER,
-                        onClick = { viewModel.setSelectedFilter(DocumentType.CUSTOMER_LEDGER) },
-                        label = { Text("حسابات العملاء", fontWeight = FontWeight.Bold, fontSize = 12.sp) },
-                        colors = FilterChipDefaults.filterChipColors(
-                            selectedContainerColor = Color(0xFF16A34A),
-                            selectedLabelColor = Color.White
-                        )
-                    )
-                }
-                item {
-                    FilterChip(
-                        selected = selectedFilter == DocumentType.LINED_NOTE,
-                        onClick = { viewModel.setSelectedFilter(DocumentType.LINED_NOTE) },
-                        label = { Text("الملاحظات", fontWeight = FontWeight.Bold, fontSize = 12.sp) },
-                        colors = FilterChipDefaults.filterChipColors(
-                            selectedContainerColor = Color(0xFFD97706),
-                            selectedLabelColor = Color.White
-                        )
-                    )
-                }
+                Tab(
+                    selected = selectedTab == 0,
+                    onClick = { selectedTab = 0 },
+                    text = { Text("حسابات العملاء (${filteredCustomers.size})", fontWeight = FontWeight.Bold, fontSize = 13.sp) },
+                    icon = { Icon(Icons.Default.Person, contentDescription = null, modifier = Modifier.size(18.dp)) }
+                )
+                Tab(
+                    selected = selectedTab == 1,
+                    onClick = { selectedTab = 1 },
+                    text = { Text("الملاحظات الدفترية (${generalNotes.size})", fontWeight = FontWeight.Bold, fontSize = 13.sp) },
+                    icon = { Icon(Icons.Default.EditNote, contentDescription = null, modifier = Modifier.size(18.dp)) }
+                )
             }
 
-            // قائمة البطاقات
-            if (filteredDocs.isEmpty()) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(24.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Icon(
-                            imageVector = Icons.Default.Description,
-                            contentDescription = null,
-                            tint = Color.LightGray,
-                            modifier = Modifier.size(64.dp)
-                        )
-                        Spacer(modifier = Modifier.height(12.dp))
-                        Text(
-                            text = "لا توجد سجلات مطابقة",
-                            fontSize = 15.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = Color.Gray
-                        )
-                        Spacer(modifier = Modifier.height(6.dp))
-                        Text(
-                            text = "اضغط على زر (إضافة جديدة) لإنشاء فاتورة أو كشف حساب",
-                            fontSize = 12.sp,
-                            color = Color.DarkGray
-                        )
+            // محتوى التبويب المختار
+            when (selectedTab) {
+                0 -> {
+                    // قائمة حسابات العملاء
+                    if (filteredCustomers.isEmpty()) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(16.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Icon(Icons.Default.PersonAdd, contentDescription = null, tint = Color.LightGray, modifier = Modifier.size(56.dp))
+                                Spacer(modifier = Modifier.height(10.dp))
+                                Text("لا توجد حسابات عملاء مسجلة حالياً", fontWeight = FontWeight.Bold, color = Color.Gray, fontSize = 14.sp)
+                                Spacer(modifier = Modifier.height(6.dp))
+                                Button(
+                                    onClick = { showAddCustomerDialog = true },
+                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1E3A8A))
+                                ) {
+                                    Icon(Icons.Default.Add, contentDescription = null)
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("إضافة أول عميل الآن")
+                                }
+                            }
+                        }
+                    } else {
+                        LazyColumn(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(horizontal = 12.dp, vertical = 8.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                            contentPadding = PaddingValues(bottom = 80.dp)
+                        ) {
+                            items(filteredCustomers, key = { it.customerName }) { customer ->
+                                CustomerAccountCard(
+                                    customer = customer,
+                                    onClick = {
+                                        viewModel.navigateTo(CurrentScreen.CustomerProfile(customer.customerName))
+                                    }
+                                )
+                            }
+                        }
                     }
                 }
-            } else {
-                LazyColumn(
-                    modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = 6.dp, bottom = 80.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    items(filteredDocs, key = { it.document.id }) { docWithEntries ->
-                        DocumentCardItem(
-                            docWithEntries = docWithEntries,
-                            onClick = {
-                                viewModel.loadDocument(docWithEntries.document.id, docWithEntries.document.docType)
-                                when (docWithEntries.document.docType) {
-                                    DocumentType.SALES_INVOICE -> viewModel.navigateTo(CurrentScreen.InvoiceEditor(docWithEntries.document.id))
-                                    DocumentType.CUSTOMER_LEDGER -> viewModel.navigateTo(CurrentScreen.CustomerLedger(docWithEntries.document.id))
-                                    DocumentType.LINED_NOTE -> viewModel.navigateTo(CurrentScreen.LinedNote(docWithEntries.document.id))
+                1 -> {
+                    // قائمة الملاحظات الدفترية
+                    if (generalNotes.isEmpty()) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(16.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Icon(Icons.Default.EditNote, contentDescription = null, tint = Color.LightGray, modifier = Modifier.size(56.dp))
+                                Spacer(modifier = Modifier.height(10.dp))
+                                Text("لا توجد ملاحظات دفترية مسجلة", fontWeight = FontWeight.Bold, color = Color.Gray, fontSize = 14.sp)
+                                Spacer(modifier = Modifier.height(6.dp))
+                                Button(
+                                    onClick = {
+                                        viewModel.loadDocument(0L, DocumentType.LINED_NOTE)
+                                        viewModel.navigateTo(CurrentScreen.LinedNote(0L))
+                                    },
+                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF475569))
+                                ) {
+                                    Icon(Icons.Default.Add, contentDescription = null)
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("إضافة ملاحظة جديدة")
                                 }
-                            },
-                            onPrintClick = {
-                                viewModel.loadDocument(docWithEntries.document.id, docWithEntries.document.docType)
-                                viewModel.navigateTo(CurrentScreen.ThermalPrint(docWithEntries.document.id))
-                            },
-                            onSpeakClick = {
-                                val textToRead = when (docWithEntries.document.docType) {
-                                    DocumentType.SALES_INVOICE -> {
-                                        "فاتورة مبيعات رقم ${docWithEntries.document.docNumber} للعميل ${docWithEntries.document.customerName.ifEmpty { "المحترم" }}، الإجمالي الكلي ${docWithEntries.invoiceTotal} ريال."
-                                    }
-                                    DocumentType.CUSTOMER_LEDGER -> {
-                                        "كشف حساب ${docWithEntries.document.customerName.ifEmpty { "العميل" }}، إجمالي عليه ${docWithEntries.totalDebit} ريال، وإجمالي له ${docWithEntries.totalCredit} ريال، وصافي الرصيد ${Math.abs(docWithEntries.netBalance)} ريال."
-                                    }
-                                    DocumentType.LINED_NOTE -> {
-                                        "${docWithEntries.document.title}: ${docWithEntries.document.notes}"
+                            }
+                        }
+                    } else {
+                        LazyColumn(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(horizontal = 12.dp, vertical = 8.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                            contentPadding = PaddingValues(bottom = 80.dp)
+                        ) {
+                            items(generalNotes, key = { it.document.id }) { noteDoc ->
+                                Card(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable {
+                                            viewModel.loadDocument(noteDoc.document.id, DocumentType.LINED_NOTE)
+                                            viewModel.navigateTo(CurrentScreen.LinedNote(noteDoc.document.id))
+                                        },
+                                    shape = RoundedCornerShape(10.dp),
+                                    colors = CardDefaults.cardColors(containerColor = Color.White),
+                                    elevation = CardDefaults.cardElevation(defaultElevation = 1.5.dp)
+                                ) {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(12.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(40.dp)
+                                                .clip(RoundedCornerShape(8.dp))
+                                                .background(Color(0xFF475569)),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Icon(Icons.Default.EditNote, contentDescription = null, tint = Color.White)
+                                        }
+
+                                        Spacer(modifier = Modifier.width(10.dp))
+
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                text = noteDoc.document.title.ifEmpty { "ملاحظة دفترية" },
+                                                fontWeight = FontWeight.Bold,
+                                                fontSize = 13.sp,
+                                                color = Color(0xFF0F172A)
+                                            )
+                                            Text(
+                                                text = noteDoc.document.notes.take(60).ifEmpty { "بدون تفاصيل إضافية..." },
+                                                fontSize = 11.sp,
+                                                color = Color.Gray,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                            Text(
+                                                text = noteDoc.document.dateString,
+                                                fontSize = 10.sp,
+                                                color = Color.DarkGray
+                                            )
+                                        }
+
+                                        IconButton(onClick = {
+                                            viewModel.navigateTo(CurrentScreen.ThermalPrint(noteDoc.document.id))
+                                        }) {
+                                            Icon(Icons.Default.Print, contentDescription = "طباعة", tint = Color(0xFF0284C7))
+                                        }
+
+                                        IconButton(onClick = { docToDelete = noteDoc }) {
+                                            Icon(Icons.Default.Delete, contentDescription = "حذف", tint = Color(0xFFDC2626))
+                                        }
                                     }
                                 }
-                                viewModel.speakDocument(textToRead)
-                            },
-                            onDeleteClick = { docToDelete = docWithEntries }
-                        )
+                            }
+                        }
                     }
                 }
             }
         }
     }
 
-    // تأكيد الحذف
-    docToDelete?.let { target ->
+    // نافذة إضافة عميل جديد
+    if (showAddCustomerDialog) {
+        AlertDialog(
+            onDismissRequest = { showAddCustomerDialog = false },
+            title = { Text("إضافة حساب عميل جديد", fontWeight = FontWeight.Bold) },
+            text = {
+                Column {
+                    Text(
+                        text = "أدخل اسم العميل لإنشاء دفتر حساب مخصص له:",
+                        fontSize = 12.sp,
+                        color = Color.DarkGray
+                    )
+                    Spacer(modifier = Modifier.height(10.dp))
+                    OutlinedTextField(
+                        value = newCustomerName,
+                        onValueChange = { newCustomerName = it },
+                        label = { Text("اسم العميل أو الشخص *") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = newCustomerInitialDebit,
+                        onValueChange = { newCustomerInitialDebit = it },
+                        label = { Text("رصيد سابق / دين ابتدائي (اختياري)") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        if (newCustomerName.isNotBlank()) {
+                            val initDebit = newCustomerInitialDebit.toDoubleOrNull() ?: 0.0
+                            viewModel.addNewCustomer(newCustomerName.trim(), initDebit)
+                            showAddCustomerDialog = false
+                            newCustomerName = ""
+                            newCustomerInitialDebit = ""
+                            Toast.makeText(context, "تم إنشاء حساب العميل بنجاح", Toast.LENGTH_SHORT).show()
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1E3A8A))
+                ) {
+                    Text("إنشاء الحساب")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showAddCustomerDialog = false }) {
+                    Text("إلغاء")
+                }
+            }
+        )
+    }
+
+    // نافذة تأكيد الحذف للملاحظات
+    if (docToDelete != null) {
         AlertDialog(
             onDismissRequest = { docToDelete = null },
             title = { Text("تأكيد الحذف", fontWeight = FontWeight.Bold) },
-            text = { Text("هل أنت متأكد من حذف السجل رقم ${target.document.docNumber} (${target.document.customerName})؟") },
+            text = { Text("هل أنت متأكد من حذف هذه الملاحظة نهائياً؟") },
             confirmButton = {
-                TextButton(
+                Button(
                     onClick = {
-                        viewModel.deleteDocument(target.document.id)
+                        docToDelete?.let { viewModel.deleteDocument(it.document.id) }
                         docToDelete = null
-                    }
+                        Toast.makeText(context, "تم الحذف", Toast.LENGTH_SHORT).show()
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFDC2626))
                 ) {
-                    Text("حذف", color = Color.Red, fontWeight = FontWeight.Bold)
+                    Text("حذف")
                 }
             },
             dismissButton = {
@@ -434,310 +639,76 @@ fun HomeScreen(
     }
 }
 
+/**
+ * بطاقة حساب العميل في الشاشة الرئيسية
+ */
 @Composable
-fun QuickStatsBar(
-    invoicesSum: Double,
-    ledgerDebit: Double,
-    ledgerCredit: Double,
-    notesCount: Int
+fun CustomerAccountCard(
+    customer: CustomerSummary,
+    onClick: () -> Unit
 ) {
-    Row(
+    Card(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 8.dp, vertical = 4.dp),
-        horizontalArrangement = Arrangement.spacedBy(6.dp)
-    ) {
-        // فواتير المبيعات (أزرق)
-        Card(
-            modifier = Modifier.weight(1f),
-            colors = CardDefaults.cardColors(containerColor = Color(0xFFEFF6FF)),
-            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFBFDBFE)),
-            shape = RoundedCornerShape(8.dp)
-        ) {
-            Column(modifier = Modifier.padding(6.dp)) {
-                Text("المبيعات", fontSize = 9.sp, color = Color(0xFF1E40AF), fontWeight = FontWeight.Bold)
-                Text(
-                    text = String.format(Locale.US, "%.0f ر.ي", invoicesSum),
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.ExtraBold,
-                    color = Color(0xFF1E40AF)
-                )
-            }
-        }
-
-        // أرصدة مدينة - عليهم (أحمر)
-        Card(
-            modifier = Modifier.weight(1f),
-            colors = CardDefaults.cardColors(containerColor = Color(0xFFFEF2F2)),
-            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFFECACA)),
-            shape = RoundedCornerShape(8.dp)
-        ) {
-            Column(modifier = Modifier.padding(6.dp)) {
-                Text("عليهم (مدين)", fontSize = 9.sp, color = Color(0xFFDC2626), fontWeight = FontWeight.Bold)
-                Text(
-                    text = String.format(Locale.US, "%.0f ر.ي", ledgerDebit),
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.ExtraBold,
-                    color = Color(0xFFDC2626)
-                )
-            }
-        }
-
-        // أرصدة دائنة - لهم (أخضر)
-        Card(
-            modifier = Modifier.weight(1f),
-            colors = CardDefaults.cardColors(containerColor = Color(0xFFF0FDF4)),
-            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFBBF7D0)),
-            shape = RoundedCornerShape(8.dp)
-        ) {
-            Column(modifier = Modifier.padding(6.dp)) {
-                Text("لهم (دائن)", fontSize = 9.sp, color = Color(0xFF047857), fontWeight = FontWeight.Bold)
-                Text(
-                    text = String.format(Locale.US, "%.0f ر.ي", ledgerCredit),
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.ExtraBold,
-                    color = Color(0xFF047857)
-                )
-            }
-        }
-
-        // ملاحظات دفترية (عسلي/ذهبي)
-        Card(
-            modifier = Modifier.weight(0.9f),
-            colors = CardDefaults.cardColors(containerColor = Color(0xFFFFFBEB)),
-            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFFDE68A)),
-            shape = RoundedCornerShape(8.dp)
-        ) {
-            Column(modifier = Modifier.padding(6.dp)) {
-                Text("الملاحظات", fontSize = 9.sp, color = Color(0xFFB45309), fontWeight = FontWeight.Bold)
-                Text(
-                    text = "$notesCount ملاحظة",
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.ExtraBold,
-                    color = Color(0xFFB45309)
-                )
-            }
-        }
-    }
-}
-
-@Composable
-fun DocumentCardItem(
-    docWithEntries: DocumentWithEntries,
-    onClick: () -> Unit,
-    onPrintClick: () -> Unit,
-    onSpeakClick: () -> Unit,
-    onDeleteClick: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    val doc = docWithEntries.document
-    val entries = docWithEntries.entries
-
-    val themeColor = when (doc.docType) {
-        DocumentType.SALES_INVOICE -> Color(0xFF1E40AF)
-        DocumentType.CUSTOMER_LEDGER -> Color(0xFF047857)
-        DocumentType.LINED_NOTE -> Color(0xFFB45309)
-    }
-
-    val cardBg = when (doc.docType) {
-        DocumentType.SALES_INVOICE -> Color(0xFFF8FAFC)
-        DocumentType.CUSTOMER_LEDGER -> Color(0xFFF0FDF4)
-        DocumentType.LINED_NOTE -> Color(0xFFFFFBEB)
-    }
-
-    val cardBorder = when (doc.docType) {
-        DocumentType.SALES_INVOICE -> Color(0xFF93C5FD)
-        DocumentType.CUSTOMER_LEDGER -> Color(0xFFA7F3D0)
-        DocumentType.LINED_NOTE -> Color(0xFFFDE68A)
-    }
-
-    val typeIcon = when (doc.docType) {
-        DocumentType.SALES_INVOICE -> Icons.Default.ReceiptLong
-        DocumentType.CUSTOMER_LEDGER -> Icons.AutoMirrored.Filled.MenuBook
-        DocumentType.LINED_NOTE -> Icons.Default.EditNote
-    }
-
-    val typeLabel = when (doc.docType) {
-        DocumentType.SALES_INVOICE -> if (doc.paymentType == PaymentType.CASH) "فاتورة أصناف (نقداً)" else "فاتورة أصناف (آجل)"
-        DocumentType.CUSTOMER_LEDGER -> "كشف حساب عميل"
-        DocumentType.LINED_NOTE -> "ملاحظة دفترية"
-    }
-
-    Card(
-        modifier = modifier
-            .fillMaxWidth()
-            .clickable { onClick() }
-            .testTag("document_card_${doc.id}"),
-        shape = RoundedCornerShape(10.dp),
-        colors = CardDefaults.cardColors(containerColor = cardBg),
-        border = androidx.compose.foundation.BorderStroke(1.2.dp, cardBorder),
+            .clickable { onClick() },
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(containerColor = Color.White),
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
-        Column(modifier = Modifier.padding(10.dp)) {
-            // الصف العلوي: الشارة والأيقونة ورقم الفاتورة والتاريخ
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(14.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(44.dp)
+                    .clip(CircleShape)
+                    .background(Color(0xFF1E3A8A)),
+                contentAlignment = Alignment.Center
             ) {
-                Surface(
-                    color = themeColor,
-                    shape = RoundedCornerShape(6.dp)
-                ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(
-                            imageVector = typeIcon,
-                            contentDescription = null,
-                            tint = Color.White,
-                            modifier = Modifier.size(13.dp)
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text(
-                            text = typeLabel,
-                            color = Color.White,
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-                }
+                Icon(
+                    imageVector = Icons.Default.Person,
+                    contentDescription = null,
+                    tint = Color.White,
+                    modifier = Modifier.size(24.dp)
+                )
+            }
 
-                Spacer(modifier = Modifier.width(8.dp))
+            Spacer(modifier = Modifier.width(12.dp))
 
+            Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = "№ ${doc.docNumber}",
-                    color = StampRed,
+                    text = customer.customerName,
+                    fontWeight = FontWeight.Bold,
                     fontSize = 14.sp,
-                    fontWeight = FontWeight.ExtraBold,
-                    fontFamily = FontFamily.Monospace
+                    color = Color(0xFF0F172A)
                 )
-
-                Spacer(modifier = Modifier.weight(1f))
-
                 Text(
-                    text = "${doc.dateString} (${doc.dayString})",
-                    fontSize = 10.sp,
-                    color = Color.Gray,
-                    fontWeight = FontWeight.Medium
+                    text = "${customer.documentCount} حركات مسجلة ${if (customer.lastDate.isNotEmpty()) "• ${customer.lastDate}" else ""}",
+                    fontSize = 11.sp,
+                    color = Color.Gray
                 )
             }
 
-            Spacer(modifier = Modifier.height(8.dp))
-
-            // اسم العميل أو العنوان
-            Text(
-                text = doc.customerName.ifEmpty { doc.title.ifEmpty { "سجل بدون اسم" } },
-                fontSize = 15.sp,
-                fontWeight = FontWeight.Bold,
-                color = Color(0xFF0F172A),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-
-            Spacer(modifier = Modifier.height(4.dp))
-
-            // معاينة سريعة للأصناف أو الملاحظة
-            when (doc.docType) {
-                DocumentType.SALES_INVOICE -> {
-                    val previewItems = entries.take(2).joinToString(" • ") { it.description.ifEmpty { "صنف" } }
-                    Text(
-                        text = if (previewItems.isNotEmpty()) "$previewItems..." else "لا توجد أصناف مدخلة",
-                        fontSize = 11.sp,
-                        color = Color.DarkGray,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-                DocumentType.CUSTOMER_LEDGER -> {
-                    Text(
-                        text = "عدد العمليات: ${entries.size} | له: ${docWithEntries.totalCredit} | عليه: ${docWithEntries.totalDebit}",
-                        fontSize = 11.sp,
-                        color = Color.DarkGray
-                    )
-                }
-                DocumentType.LINED_NOTE -> {
-                    Text(
-                        text = doc.notes.ifEmpty { "لا توجد تفاصيل" },
-                        fontSize = 11.sp,
-                        color = Color.DarkGray,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.height(10.dp))
-
-            // شريط المعلومات السفلي والأزرار
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                // المبلغ
-                when (doc.docType) {
-                    DocumentType.SALES_INVOICE -> {
-                        Text(
-                            text = "الإجمالي: ${String.format(Locale.US, "%.2f ريال", docWithEntries.invoiceTotal)}",
-                            fontWeight = FontWeight.ExtraBold,
-                            fontSize = 14.sp,
-                            color = Color(0xFF1E3A8A)
-                        )
-                    }
-                    DocumentType.CUSTOMER_LEDGER -> {
-                        val net = docWithEntries.netBalance
-                        val netColor = if (net >= 0) Color(0xFFDC2626) else Color(0xFF16A34A)
-                        val netLabel = if (net >= 0) "عليه (مدين)" else "له (دائن)"
-                        Text(
-                            text = "الصافي: ${String.format(Locale.US, "%.2f ريال", Math.abs(net))} ($netLabel)",
-                            fontWeight = FontWeight.ExtraBold,
-                            fontSize = 13.sp,
-                            color = netColor
-                        )
-                    }
-                    DocumentType.LINED_NOTE -> {
-                        Text(text = "ملاحظة دفترية", fontSize = 11.sp, color = Color.Gray)
-                    }
-                }
-
-                Spacer(modifier = Modifier.weight(1f))
-
-                // زر الاستماع بالصوت (Gemini TTS)
-                IconButton(
-                    onClick = onSpeakClick,
-                    modifier = Modifier.size(32.dp)
+            Column(horizontalAlignment = Alignment.End) {
+                Text(
+                    text = "${String.format(Locale.US, "%.0f", Math.abs(customer.netBalance))} ريال",
+                    fontWeight = FontWeight.ExtraBold,
+                    fontSize = 15.sp,
+                    color = if (customer.netBalance > 0) Color(0xFFDC2626) else if (customer.netBalance < 0) Color(0xFF16A34A) else Color.DarkGray
+                )
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = if (customer.netBalance > 0) Color(0xFFFEE2E2) else if (customer.netBalance < 0) Color(0xFFDCFCE7) else Color(0xFFF1F5F9)
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.VolumeUp,
-                        contentDescription = "قراءة صوتية",
-                        tint = Color(0xFF0284C7),
-                        modifier = Modifier.size(18.dp)
-                    )
-                }
-
-                // زر الطباعة الحرارية
-                IconButton(
-                    onClick = onPrintClick,
-                    modifier = Modifier.size(32.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Print,
-                        contentDescription = "طباعة حرارية",
-                        tint = Color(0xFF475569),
-                        modifier = Modifier.size(18.dp)
-                    )
-                }
-
-                // زر الحذف
-                IconButton(
-                    onClick = onDeleteClick,
-                    modifier = Modifier.size(32.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Delete,
-                        contentDescription = "حذف",
-                        tint = Color(0xFFEF4444),
-                        modifier = Modifier.size(18.dp)
+                    Text(
+                        text = if (customer.netBalance > 0) "عليه (مدين)" else if (customer.netBalance < 0) "له (دائن)" else "مصفى",
+                        color = if (customer.netBalance > 0) Color(0xFFDC2626) else if (customer.netBalance < 0) Color(0xFF16A34A) else Color.DarkGray,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                     )
                 }
             }

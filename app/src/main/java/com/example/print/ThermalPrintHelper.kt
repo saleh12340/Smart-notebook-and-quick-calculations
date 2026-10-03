@@ -175,20 +175,20 @@ object ThermalPrintHelper {
         // ترويسة الجدول
         regularPaint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
         if (doc.docType == DocumentType.SALES_INVOICE) {
-            canvas.drawText("البيان", width - 15f, y, regularPaint)
-            canvas.drawText("العدد", width * 0.48f, y, regularPaint)
-            canvas.drawText("السعر", width * 0.30f, y, regularPaint)
-            canvas.drawText("الإجمالي", 60f, y, regularPaint)
+            canvas.drawText("الإجمالي", width - 15f, y, regularPaint)
+            canvas.drawText("العدد", width * 0.70f, y, regularPaint)
+            canvas.drawText("السعر", width * 0.48f, y, regularPaint)
+            canvas.drawText("البيان", 60f, y, regularPaint)
             y += 8f
             canvas.drawLine(10f, y, width - 10f, y, linePaint)
             y += 24f
 
             regularPaint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
             for (item in entries) {
-                canvas.drawText(item.description.take(16), width - 15f, y, regularPaint)
-                canvas.drawText(String.format(Locale.US, "%.1f", item.quantity), width * 0.48f, y, regularPaint)
-                canvas.drawText(String.format(Locale.US, "%.1f", item.unitPrice), width * 0.30f, y, regularPaint)
-                canvas.drawText(String.format(Locale.US, "%.1f", item.totalAmount), 60f, y, regularPaint)
+                canvas.drawText(String.format(Locale.US, "%.1f", item.totalAmount), width - 15f, y, regularPaint)
+                canvas.drawText(String.format(Locale.US, "%.1f", item.quantity), width * 0.70f, y, regularPaint)
+                canvas.drawText(String.format(Locale.US, "%.1f", item.unitPrice), width * 0.48f, y, regularPaint)
+                canvas.drawText(item.description.take(14), 60f, y, regularPaint)
                 y += 24f
             }
 

@@ -25,11 +25,23 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
+data class CustomerSummary(
+    val customerName: String,
+    val totalDebit: Double,
+    val totalCredit: Double,
+    val netBalance: Double,
+    val totalInvoicesAmount: Double,
+    val documentCount: Int,
+    val lastDate: String,
+    val lastUpdatedAt: Long
+)
+
 sealed class CurrentScreen {
     data object Home : CurrentScreen()
-    data class InvoiceEditor(val docId: Long = 0) : CurrentScreen()
-    data class CustomerLedger(val docId: Long = 0) : CurrentScreen()
-    data class LinedNote(val docId: Long = 0) : CurrentScreen()
+    data class CustomerProfile(val customerName: String) : CurrentScreen()
+    data class InvoiceEditor(val docId: Long = 0, val prefilledCustomer: String = "") : CurrentScreen()
+    data class CustomerLedger(val docId: Long = 0, val prefilledCustomer: String = "") : CurrentScreen()
+    data class LinedNote(val docId: Long = 0, val prefilledCustomer: String = "") : CurrentScreen()
     data class ThermalPrint(val docId: Long) : CurrentScreen()
     data object AiAssistant : CurrentScreen()
     data object Settings : CurrentScreen()
@@ -87,9 +99,9 @@ class DaftarViewModel(application: Application) : AndroidViewModel(application) 
     private val _activeEntries = MutableStateFlow<List<DocumentEntryEntity>>(emptyList())
     val activeEntries: StateFlow<List<DocumentEntryEntity>> = _activeEntries.asStateFlow()
 
-    fun loadDocument(docId: Long, defaultType: DocumentType = DocumentType.SALES_INVOICE) {
+    fun loadDocument(docId: Long, defaultType: DocumentType = DocumentType.SALES_INVOICE, prefilledCustomer: String = "") {
         if (docId == 0L) {
-            _activeDocument.value = createDefaultDocument(defaultType)
+            _activeDocument.value = createDefaultDocument(defaultType, prefilledCustomer)
             _activeEntries.value = createInitialEntries(defaultType)
         } else {
             viewModelScope.launch {
@@ -118,11 +130,18 @@ class DaftarViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
-    private fun createDefaultDocument(type: DocumentType): DocumentEntity {
+    private fun getNextSequentialDocNumber(): String {
+        val count = allDocuments.value.size
+        val maxExisting = allDocuments.value.mapNotNull { it.document.docNumber.toLongOrNull() }.maxOrNull() ?: 0L
+        val next = (maxOf(count.toLong(), maxExisting) + 1L)
+        return String.format(Locale.US, "%07d", next)
+    }
+
+    fun createDefaultDocument(type: DocumentType, customerName: String = ""): DocumentEntity {
         val dateFormat = SimpleDateFormat("yyyy/MM/dd", Locale("ar"))
         val dayFormat = SimpleDateFormat("EEEE", Locale("ar"))
         val now = Date()
-        val randomNum = String.format(Locale.US, "%07d", (100..9999).random())
+        val nextDocNumber = getNextSequentialDocNumber()
         val prefs = getApplication<Application>().getSharedPreferences("app_settings", Context.MODE_PRIVATE)
         val sName = prefs.getString("store_name", "بقالة العزي") ?: "بقالة العزي"
         val sPhone = prefs.getString("store_phone", "776425052") ?: "776425052"
@@ -131,13 +150,13 @@ class DaftarViewModel(application: Application) : AndroidViewModel(application) 
         val sSeller = prefs.getString("seller_name", "المحاسب") ?: "المحاسب"
 
         return DocumentEntity(
-            docNumber = randomNum,
+            docNumber = nextDocNumber,
             title = when (type) {
                 DocumentType.SALES_INVOICE -> "فاتورة بيع"
                 DocumentType.CUSTOMER_LEDGER -> "كشف حساب عميل"
                 DocumentType.LINED_NOTE -> "ملاحظة دفترية"
             },
-            customerName = "",
+            customerName = customerName,
             docType = type,
             paymentType = PaymentType.CASH,
             storeName = sName,
@@ -151,6 +170,28 @@ class DaftarViewModel(application: Application) : AndroidViewModel(application) 
             notes = "",
             sellerSignature = sSeller
         )
+    }
+
+    fun addNewCustomer(customerName: String, initialDebit: Double = 0.0) {
+        if (customerName.isBlank()) return
+        viewModelScope.launch {
+            val doc = createDefaultDocument(DocumentType.CUSTOMER_LEDGER, customerName.trim())
+            val dateFormat = SimpleDateFormat("yyyy/MM/dd", Locale("ar"))
+            val dayFormat = SimpleDateFormat("EEEE", Locale("ar"))
+            val now = Date()
+            val initialEntry = DocumentEntryEntity(
+                description = if (initialDebit > 0) "رصيد سابق / افتتاح حساب" else "افتتاح حساب عميل",
+                debit = initialDebit,
+                credit = 0.0,
+                runningBalance = initialDebit,
+                entryDate = dateFormat.format(now),
+                entryDay = dayFormat.format(now)
+            )
+            val id = repository.saveDocument(doc, listOf(initialEntry))
+            _activeDocument.value = doc.copy(id = id)
+            _activeEntries.value = listOf(initialEntry)
+            navigateTo(CurrentScreen.CustomerProfile(customerName.trim()))
+        }
     }
 
     private fun createInitialEntries(type: DocumentType): List<DocumentEntryEntity> {
