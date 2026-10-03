@@ -138,9 +138,9 @@ fun ReportsScreen(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                SummaryItem("الفواتير", totalInvoices)
-                SummaryItem("الحسابات", totalAccounts)
-                SummaryItem("الملاحظات", totalNotes)
+                SummaryItem("الفواتير", totalInvoices, Modifier.weight(1f))
+                SummaryItem("الحسابات", totalAccounts, Modifier.weight(1f))
+                SummaryItem("الملاحظات", totalNotes, Modifier.weight(1f))
             }
 
             OutlinedTextField(
@@ -196,9 +196,9 @@ fun ReportsScreen(
 }
 
 @Composable
-private fun SummaryItem(title: String, value: Int) {
+private fun SummaryItem(title: String, value: Int, modifier: Modifier = Modifier) {
     Card(
-        modifier = Modifier.weight(1f),
+        modifier = modifier,
         colors = CardDefaults.cardColors(containerColor = Color.White)
     ) {
         Column(
