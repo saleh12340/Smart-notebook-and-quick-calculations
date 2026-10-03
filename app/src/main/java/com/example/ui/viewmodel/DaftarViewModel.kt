@@ -24,6 +24,8 @@ import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import org.json.JSONArray
+import org.json.JSONObject
 
 data class CustomerSummary(
     val customerName: String,
@@ -487,7 +489,146 @@ class DaftarViewModel(application: Application) : AndroidViewModel(application) 
 
     fun setSelectedAiModel(model: String) {
         _selectedAiModel.value = model
+    }    
+    private val _aiWriteEnabled = MutableStateFlow(
+        application.getSharedPreferences("app_settings", Context.MODE_PRIVATE)
+            .getBoolean("ai_write_enabled", false)
+    )
+    val aiWriteEnabled: StateFlow<Boolean> = _aiWriteEnabled.asStateFlow()
+
+    fun setAiWriteEnabled(enabled: Boolean) {
+        _aiWriteEnabled.value = enabled
+        getApplication<Application>().getSharedPreferences("app_settings", Context.MODE_PRIVATE)
+            .edit().putBoolean("ai_write_enabled", enabled).apply()
     }
+
+    fun executeAiCommand(prompt: String, onComplete: (String) -> Unit = {}) {
+        if (!_aiWriteEnabled.value) {
+            onComplete("فعّل «تفويض تنفيذ أوامر الذكاء الاصطناعي» أولاً من شاشة المساعد.")
+            return
+        }
+        viewModelScope.launch {
+            val result = geminiService.interpretAccountingCommand(prompt, _selectedAiModel.value)
+            val message = result.fold(
+                onSuccess = { command -> executeParsedAiCommand(command) },
+                onFailure = { "تعذر تفسير الأمر الذكي: §{it.message ?: "خطأ غير معروف"}" }
+            )
+            _chatMessages.value = _chatMessages.value + ChatMessage(role = "model", content = message)
+            onComplete(message)
+        }
+    }
+
+    private suspend fun executeParsedAiCommand(command: JSONObject): String {
+        return when (command.optString("action")) {
+            "create_invoice" -> {
+                val customer = command.optString("customer").trim()
+                val payment = if (command.optString("paymentType") == "CREDIT") PaymentType.CREDIT else PaymentType.CASH
+                val itemsJson = command.optJSONArray("items") ?: JSONArray()
+                val items = mutableListOf<DocumentEntryEntity>()
+                for (i in 0 until itemsJson.length()) {
+                    val item = itemsJson.optJSONObject(i) ?: continue
+                    val q = item.optDouble("quantity", 1.0).coerceAtLeast(0.0)
+                    val total = item.optDouble("totalAmount", 0.0)
+                    val price = if (item.has("unitPrice")) item.optDouble("unitPrice", 0.0) else if (q > 0) total / q else 0.0
+                    items.add(DocumentEntryEntity(
+                        description = item.optString("description", "صنف").trim().ifEmpty { "صنف" },
+                        quantity = q, unitPrice = price,
+                        totalAmount = if (total > 0.0) total else q * price
+                    ))
+                }
+                if (items.isEmpty()) return "لم يتم إنشاء الفاتورة: لم يحدد الذكاء الاصطناعي أي صنف."
+                val doc = createDefaultDocument(DocumentType.SALES_INVOICE, customer).copy(paymentType = payment)
+                val id = repository.saveDocument(doc, items)
+                _activeDocument.value = doc.copy(id = id)
+                _activeEntries.value = items + DocumentEntryEntity(description = "", quantity = 1.0, unitPrice = 0.0, totalAmount = 0.0)
+                BackupHelper.performAutoBackupIfEnabled(getApplication(), repository.dao, doc.storeName)
+                navigateTo(CurrentScreen.InvoiceEditor(id))
+                "تم إنشاء الفاتورة رقم §{doc.docNumber} للعميل §{customer.ifEmpty { "غير محدد" }}."
+            }
+            "create_account" -> {
+                val customer = command.optString("customer").trim()
+                if (customer.isBlank()) return "لم يتم إنشاء الحساب: اذكر اسم العميل."
+                val opening = command.optDouble("openingBalance", 0.0).coerceAtLeast(0.0)
+                val doc = createDefaultDocument(DocumentType.CUSTOMER_LEDGER, customer)
+                val now = Date()
+                val entry = DocumentEntryEntity(
+                    description = if (opening > 0) "رصيد افتتاحي" else "افتتاح حساب",
+                    debit = opening, credit = 0.0, runningBalance = opening,
+                    entryDate = SimpleDateFormat("yyyy/MM/dd", Locale("ar")).format(now),
+                    entryDay = SimpleDateFormat("EEEE", Locale("ar")).format(now)
+                )
+                val id = repository.saveDocument(doc, listOf(entry))
+                _activeDocument.value = doc.copy(id = id)
+                _activeEntries.value = listOf(entry)
+                BackupHelper.performAutoBackupIfEnabled(getApplication(), repository.dao, doc.storeName)
+                navigateTo(CurrentScreen.CustomerProfile(customer))
+                "تم إنشاء حساب العميل §{customer} برصيد افتتاحي §{String.format(Locale.US, "%.0f", opening)} ريال."
+            }
+            "add_account_entry" -> {
+                val customer = command.optString("customer").trim()
+                if (customer.isBlank()) return "لم تتم إضافة الحركة: اذكر اسم العميل."
+                val existing = allDocuments.value.firstOrNull {
+                    it.document.docType == DocumentType.CUSTOMER_LEDGER && it.document.customerName.trim() == customer
+                }
+                val doc = existing?.document ?: createDefaultDocument(DocumentType.CUSTOMER_LEDGER, customer)
+                val entries = existing?.entries?.filter {
+                    it.description.isNotBlank() || it.debit != 0.0 || it.credit != 0.0
+                }?.toMutableList() ?: mutableListOf()
+                val now = Date()
+                entries.add(DocumentEntryEntity(
+                    description = command.optString("description", "حركة حساب"),
+                    debit = command.optDouble("debit", 0.0).coerceAtLeast(0.0),
+                    credit = command.optDouble("credit", 0.0).coerceAtLeast(0.0),
+                    entryDate = SimpleDateFormat("yyyy/MM/dd", Locale("ar")).format(now),
+                    entryDay = SimpleDateFormat("EEEE", Locale("ar")).format(now)
+                ))
+                val normalized = recalculateLedgerBalances(entries)
+                val id = repository.saveDocument(doc, normalized)
+                _activeDocument.value = doc.copy(id = id)
+                _activeEntries.value = normalized + DocumentEntryEntity(
+                    entryDate = SimpleDateFormat("yyyy/MM/dd", Locale("ar")).format(now),
+                    entryDay = SimpleDateFormat("EEEE", Locale("ar")).format(now)
+                )
+                BackupHelper.performAutoBackupIfEnabled(getApplication(), repository.dao, doc.storeName)
+                navigateTo(CurrentScreen.CustomerProfile(customer))
+                "تمت إضافة الحركة إلى حساب §{customer} وتحديث الرصيد."
+            }
+            "create_note" -> {
+                val doc = createDefaultDocument(DocumentType.LINED_NOTE).copy(
+                    title = command.optString("title", "ملاحظة"),
+                    notes = command.optString("text", "")
+                )
+                val id = repository.saveDocument(doc, emptyList())
+                _activeDocument.value = doc.copy(id = id)
+                _activeEntries.value = emptyList()
+                BackupHelper.performAutoBackupIfEnabled(getApplication(), repository.dao, doc.storeName)
+                navigateTo(CurrentScreen.LinedNote(id))
+                "تم إنشاء الملاحظة وحفظها."
+            }
+            "repair_data" -> repairData()
+            else -> command.optString("message", "لم يتم تنفيذ أمر واضح.")
+        }
+    }
+
+    private suspend fun repairData(): String {
+        var repaired = 0
+        for (docWithEntries in allDocuments.value) {
+            val doc = docWithEntries.document
+            val meaningful = docWithEntries.entries.filter {
+                when (doc.docType) {
+                    DocumentType.SALES_INVOICE -> it.description.isNotBlank() || it.totalAmount > 0.0
+                    DocumentType.CUSTOMER_LEDGER -> it.description.isNotBlank() || it.debit != 0.0 || it.credit != 0.0
+                    DocumentType.LINED_NOTE -> true
+                }
+            }
+            val normalized = if (doc.docType == DocumentType.CUSTOMER_LEDGER) recalculateLedgerBalances(meaningful) else meaningful
+            repository.saveDocument(doc.copy(updatedAt = System.currentTimeMillis()), normalized)
+            repaired++
+        }
+        BackupHelper.performAutoBackupIfEnabled(getApplication(), repository.dao, _activeDocument.value.storeName)
+        "تم فحص وإصلاح §{repaired} سجلًا: حُذفت الأسطر الفارغة الزائدة وأعيد حساب أرصدة الحسابات."
+    }
+
 
     fun sendChatMessage(userText: String) {
         if (userText.isBlank()) return
