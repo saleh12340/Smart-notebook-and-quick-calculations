@@ -109,7 +109,6 @@ class DaftarViewModel(application: Application) : AndroidViewModel(application) 
                 if (found != null) {
                     _activeDocument.value = found.document
                     val entries = found.entries.toMutableList()
-                    // توفير أسطر فارغة إضافية جاهزة لاستقبال بيانات جديدة فوراً
                     if (found.document.docType == DocumentType.SALES_INVOICE) {
                         while (entries.size < 6 || (entries.lastOrNull()?.let { it.description.isNotBlank() || it.totalAmount > 0.0 } == true)) {
                             entries.add(DocumentEntryEntity(description = "", quantity = 1.0, unitPrice = 0.0, totalAmount = 0.0))
@@ -227,9 +226,6 @@ class DaftarViewModel(application: Application) : AndroidViewModel(application) 
         _activeDocument.value = _activeDocument.value.copy(notes = text)
     }
 
-    // --- Invoice Item Management: Total Amount is the primary driver ---
-
-    // 1. تعديل القيمة الإجمالية مباشرة (الأساس المحاسبي للفاتورة)
     fun updateInvoiceRowTotal(index: Int, totalAmount: Double) {
         val current = _activeEntries.value.toMutableList()
         if (index in current.indices) {
@@ -241,7 +237,6 @@ class DaftarViewModel(application: Application) : AndroidViewModel(application) 
                 unitPrice = unitPrice,
                 totalAmount = totalAmount
             )
-            // التوسع التلقائي إذا بدأ المستخدم بالكتابة في السطر الأخير
             if (index == current.lastIndex && (cur.description.isNotBlank() || totalAmount > 0.0)) {
                 current.add(DocumentEntryEntity(description = "", quantity = 1.0, unitPrice = 0.0, totalAmount = 0.0))
             }
@@ -249,7 +244,6 @@ class DaftarViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
-    // 2. تعديل اسم الصنف / التفاصيل
     fun updateInvoiceRowDescription(index: Int, description: String) {
         val current = _activeEntries.value.toMutableList()
         if (index in current.indices) {
@@ -262,7 +256,6 @@ class DaftarViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
-    // 3. تعديل الكمية / العدد
     fun updateInvoiceRowQuantity(index: Int, quantity: Double) {
         val current = _activeEntries.value.toMutableList()
         if (index in current.indices) {
@@ -282,7 +275,6 @@ class DaftarViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
-    // 4. تعديل سعر الوحدة (اختياري، يحدّث الإجمالي تلقائياً)
     fun updateInvoiceRowUnitPrice(index: Int, unitPrice: Double) {
         val current = _activeEntries.value.toMutableList()
         if (index in current.indices) {
@@ -320,7 +312,6 @@ class DaftarViewModel(application: Application) : AndroidViewModel(application) 
         val current = _activeEntries.value.toMutableList()
         if (index in current.indices) {
             current.removeAt(index)
-            // التأكد من بقاء سطر واحد على الأقل متاحاً للكتابة
             if (current.isEmpty()) {
                 val now = Date()
                 val dateFormat = SimpleDateFormat("yyyy/MM/dd", Locale("ar"))
@@ -339,7 +330,6 @@ class DaftarViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
-    // --- Ledger Account Entry Management ---
     fun updateLedgerEntry(index: Int, description: String, debit: Double, credit: Double, dateStr: String, dayStr: String) {
         val current = _activeEntries.value.toMutableList()
         if (index in current.indices) {
@@ -350,7 +340,6 @@ class DaftarViewModel(application: Application) : AndroidViewModel(application) 
                 entryDate = dateStr,
                 entryDay = dayStr
             )
-            // التوسع التلقائي لكشف الحساب: إذا تم إدخال حركة في السطر الأخير، يضاف سطر جديد فوراً
             if (index == current.lastIndex && (description.isNotBlank() || debit > 0.0 || credit > 0.0)) {
                 val dateFormat = SimpleDateFormat("yyyy/MM/dd", Locale("ar"))
                 val dayFormat = SimpleDateFormat("EEEE", Locale("ar"))
@@ -391,7 +380,6 @@ class DaftarViewModel(application: Application) : AndroidViewModel(application) 
     private fun recalculateLedgerBalances(entries: List<DocumentEntryEntity>): List<DocumentEntryEntity> {
         var running = 0.0
         return entries.map { entry ->
-            // الرصيد = السابق + عليه (مدين) - له (دائن)
             running += (entry.debit - entry.credit)
             entry.copy(runningBalance = running)
         }
@@ -400,7 +388,6 @@ class DaftarViewModel(application: Application) : AndroidViewModel(application) 
     fun saveActiveDocument(onSaved: (Long) -> Unit = {}) {
         viewModelScope.launch {
             val doc = _activeDocument.value.copy(updatedAt = System.currentTimeMillis())
-            // تنظيف الأسطر الفارغة الزائدة عند الحفظ
             val entriesToSave = _activeEntries.value.filter { entry ->
                 when (doc.docType) {
                     DocumentType.SALES_INVOICE -> entry.description.isNotBlank() || entry.totalAmount > 0.0
@@ -411,13 +398,11 @@ class DaftarViewModel(application: Application) : AndroidViewModel(application) 
 
             val savedId = repository.saveDocument(doc, entriesToSave)
             _activeDocument.value = doc.copy(id = savedId)
-            // حفظ نسخة احتياطية تلقائية فورية عند الحفظ
             BackupHelper.performAutoBackupIfEnabled(getApplication(), repository.dao, doc.storeName)
             onSaved(savedId)
         }
     }
 
-    // --- Backup & Restore Methods ---
     fun triggerAutoBackup() {
         viewModelScope.launch {
             BackupHelper.performAutoBackupIfEnabled(getApplication(), repository.dao, _activeDocument.value.storeName)
@@ -456,12 +441,11 @@ class DaftarViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
-    // --- AI Chatbot & Models ---
     private val _chatMessages = MutableStateFlow<List<ChatMessage>>(
         listOf(
             ChatMessage(
                 role = "model",
-                content = "أهلاً بك في المساعد المحاسبي الذكي! أنا هنا لمساعدتك في تدقيق الحسابات، مراجعة فواتير البيع، صياغة القيود اليومية أو رسائل متابعة ديون العملاء."
+                content = "أهلاً بك في المساعد المحاسبي الذكي! أنا هنا لمساعدتك في تدقيق الحسابات، مراجعة فواتير البيع، واستفساراتك المحاسبية."
             )
         )
     )
@@ -473,8 +457,15 @@ class DaftarViewModel(application: Application) : AndroidViewModel(application) 
     private val _selectedAiModel = MutableStateFlow("gemini-3.5-flash")
     val selectedAiModel: StateFlow<String> = _selectedAiModel.asStateFlow()
 
+    private val _aiWriteEnabled = MutableStateFlow(false)
+    val aiWriteEnabled: StateFlow<Boolean> = _aiWriteEnabled.asStateFlow()
+
     fun setSelectedAiModel(model: String) {
         _selectedAiModel.value = model
+    }
+
+    fun setAiWriteEnabled(enabled: Boolean) {
+        _aiWriteEnabled.value = enabled
     }
 
     fun sendChatMessage(userText: String) {
@@ -502,14 +493,40 @@ class DaftarViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
-    // --- Image Generation (gemini-3-pro-image-preview with 1K, 2K, 4K affordance) ---
+    fun executeAiCommand(command: String, onResult: (String) -> Unit) {
+        if (command.isBlank()) return
+        val currentList = _chatMessages.value.toMutableList()
+        val userMsg = ChatMessage(role = "user", content = command)
+        currentList.add(userMsg)
+        _chatMessages.value = currentList
+        _isAiLoading.value = true
+
+        viewModelScope.launch {
+            val result = geminiService.sendChatMessage(
+                messages = currentList,
+                model = _selectedAiModel.value
+            )
+            _isAiLoading.value = false
+            result.onSuccess { reply ->
+                _chatMessages.value = _chatMessages.value + ChatMessage(role = "model", content = reply)
+                onResult("تم التنفيذ بنجاح")
+            }.onFailure { err ->
+                _chatMessages.value = _chatMessages.value + ChatMessage(
+                    role = "model",
+                    content = "حدث خطأ أثناء التنفيذ: ${err.localizedMessage ?: err.message}"
+                )
+                onResult("فشل التنفيذ: ${err.localizedMessage ?: err.message}")
+            }
+        }
+    }
+
     private val _generatedImage = MutableStateFlow<Bitmap?>(null)
     val generatedImage: StateFlow<Bitmap?> = _generatedImage.asStateFlow()
 
     private val _isGeneratingImage = MutableStateFlow(false)
     val isGeneratingImage: StateFlow<Boolean> = _isGeneratingImage.asStateFlow()
 
-    private val _selectedImageResolution = MutableStateFlow("1K") // 1K, 2K, 4K
+    private val _selectedImageResolution = MutableStateFlow("1K")
     val selectedImageResolution: StateFlow<String> = _selectedImageResolution.asStateFlow()
 
     fun setSelectedImageResolution(res: String) {
@@ -533,7 +550,6 @@ class DaftarViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
-    // --- Text To Speech (TTS) ---
     private val _isSpeaking = MutableStateFlow(false)
     val isSpeaking: StateFlow<Boolean> = _isSpeaking.asStateFlow()
 
@@ -562,3 +578,4 @@ class DaftarViewModel(application: Application) : AndroidViewModel(application) 
         geminiService.stopAudio()
     }
 }
+

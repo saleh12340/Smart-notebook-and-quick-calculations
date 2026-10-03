@@ -248,7 +248,7 @@ fun AiAssistantScreen(
                     )
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
-                        text = if (isKeyConfigured) "✅ المفتاح محفوظ ومثبت حالياً ويعمل بكفاءة." else "ℹ️ إذا لم يتوفر مفتاح، سيعمل المحرك المحاسبي المحلي.",
+                        text = if (isKeyConfigured) "✅ المفتاح محفوظ ومثبت حالياً ويعمل بكفاءة." else "ℹ️ إذا لم يتوفر مفتاح، سيعمل المحرك المحلي بدون اتصال. يمكنك إدخاله لاحقاً.",
                         fontSize = 11.sp,
                         color = if (isKeyConfigured) Color(0xFF16A34A) else Color.Gray,
                         fontWeight = FontWeight.SemiBold
@@ -310,7 +310,7 @@ fun ChatTabContent(
     val messages by viewModel.chatMessages.collectAsState()
     val isLoading by viewModel.isAiLoading.collectAsState()
     val selectedModel by viewModel.selectedAiModel.collectAsState()
-    val aiWriteEnabled by viewModel.aiWriteEnabled.collectAsState()
+    val aiWriteEnabled by viewModel.aiWriteEnabled.collectAsState(initial = false)
     val listState = rememberLazyListState()
     val context = LocalContext.current
 
@@ -334,7 +334,6 @@ fun ChatTabContent(
     }
 
     Column(modifier = Modifier.fillMaxSize()) {
-        // شريط اختيار النموذج المطلوب مع التمرير الأفقي السلس
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -394,7 +393,6 @@ fun ChatTabContent(
             }
         }
 
-        // أزرار الاقتراحات السريعة
         LazyRow(
             contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
             horizontalArrangement = Arrangement.spacedBy(6.dp)
@@ -416,7 +414,6 @@ fun ChatTabContent(
             }
         }
 
-        // قائمة رسائل المحادثة (Scrollable Thread)
         LazyColumn(
             state = listState,
             modifier = Modifier
@@ -449,7 +446,6 @@ fun ChatTabContent(
             }
         }
 
-        // حقل إدخال الرسالة
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -474,7 +470,6 @@ fun ChatTabContent(
 
             Spacer(modifier = Modifier.width(6.dp))
 
-            // زر الإدخال الصوتي
             IconButton(
                 onClick = {
                     try {
@@ -504,7 +499,6 @@ fun ChatTabContent(
 
             Spacer(modifier = Modifier.width(6.dp))
 
-            // تنفيذ مباشر بأمر الذكاء الاصطناعي بعد التفويض
             OutlinedButton(
                 onClick = {
                     if (inputText.isNotBlank() && !isLoading) {
@@ -527,7 +521,6 @@ fun ChatTabContent(
 
             Spacer(modifier = Modifier.width(4.dp))
 
-            // زر الإرسال
             IconButton(
                 onClick = {
                     if (inputText.isNotBlank() && !isLoading) {
@@ -668,7 +661,6 @@ fun ImageGenTabContent(
 
                 Spacer(modifier = Modifier.height(8.dp))
 
-                // اختيار دقة الصورة (1K, 2K, 4K) كما طلب النظام
                 Text("اختر دقة وضوح الصورة:", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = Color.DarkGray)
                 Spacer(modifier = Modifier.height(4.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -726,7 +718,6 @@ fun ImageGenTabContent(
 
         Spacer(modifier = Modifier.height(14.dp))
 
-        // عرض الصورة المولدة
         if (generatedImage != null) {
             Card(
                 modifier = Modifier.fillMaxWidth(),
@@ -762,3 +753,5 @@ fun ImageGenTabContent(
         }
     }
 }
+
+
