@@ -8,7 +8,6 @@ import android.os.Environment
 import android.provider.MediaStore
 import java.io.File
 import java.io.FileOutputStream
-import java.io.InputStream
 
 /**
  * Public application storage:
@@ -73,7 +72,7 @@ object AppStorageHelper {
         subFolder: String = IMAGES_FOLDER
     ): Uri? {
         return try {
-            val bytes = context.contentResolver.openInputStream(sourceUri)?.use(InputStream::readBytes) ?: return null
+            val bytes = context.contentResolver.openInputStream(sourceUri)?.use { it.readBytes() } ?: return null
             saveBytesToDownloads(context, bytes, fileName, mimeType, subFolder)
         } catch (_: Exception) {
             null
