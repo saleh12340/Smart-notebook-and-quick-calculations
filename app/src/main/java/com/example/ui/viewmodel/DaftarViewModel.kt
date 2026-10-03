@@ -511,7 +511,7 @@ class DaftarViewModel(application: Application) : AndroidViewModel(application) 
             val result = geminiService.interpretAccountingCommand(prompt, _selectedAiModel.value)
             val message = result.fold(
                 onSuccess = { command -> executeParsedAiCommand(command) },
-                onFailure = { "تعذر تفسير الأمر الذكي: §{it.message ?: "خطأ غير معروف"}" }
+                onFailure = { "تعذر تفسير الأمر الذكي: ${it.message ?: "خطأ غير معروف"}" }
             )
             _chatMessages.value = _chatMessages.value + ChatMessage(role = "model", content = message)
             onComplete(message)
@@ -543,7 +543,7 @@ class DaftarViewModel(application: Application) : AndroidViewModel(application) 
                 _activeEntries.value = items + DocumentEntryEntity(description = "", quantity = 1.0, unitPrice = 0.0, totalAmount = 0.0)
                 BackupHelper.performAutoBackupIfEnabled(getApplication(), repository.dao, doc.storeName)
                 navigateTo(CurrentScreen.InvoiceEditor(id))
-                "تم إنشاء الفاتورة رقم §{doc.docNumber} للعميل §{customer.ifEmpty { "غير محدد" }}."
+                "تم إنشاء الفاتورة رقم ${doc.docNumber} للعميل ${customer.ifEmpty { "غير محدد" }}."
             }
             "create_account" -> {
                 val customer = command.optString("customer").trim()
@@ -562,7 +562,7 @@ class DaftarViewModel(application: Application) : AndroidViewModel(application) 
                 _activeEntries.value = listOf(entry)
                 BackupHelper.performAutoBackupIfEnabled(getApplication(), repository.dao, doc.storeName)
                 navigateTo(CurrentScreen.CustomerProfile(customer))
-                "تم إنشاء حساب العميل §{customer} برصيد افتتاحي §{String.format(Locale.US, "%.0f", opening)} ريال."
+                "تم إنشاء حساب العميل ${customer} برصيد افتتاحي ${String.format(Locale.US, "%.0f", opening)} ريال."
             }
             "add_account_entry" -> {
                 val customer = command.optString("customer").trim()
@@ -591,7 +591,7 @@ class DaftarViewModel(application: Application) : AndroidViewModel(application) 
                 )
                 BackupHelper.performAutoBackupIfEnabled(getApplication(), repository.dao, doc.storeName)
                 navigateTo(CurrentScreen.CustomerProfile(customer))
-                "تمت إضافة الحركة إلى حساب §{customer} وتحديث الرصيد."
+                "تمت إضافة الحركة إلى حساب ${customer} وتحديث الرصيد."
             }
             "create_note" -> {
                 val doc = createDefaultDocument(DocumentType.LINED_NOTE).copy(
@@ -626,7 +626,7 @@ class DaftarViewModel(application: Application) : AndroidViewModel(application) 
             repaired++
         }
         BackupHelper.performAutoBackupIfEnabled(getApplication(), repository.dao, _activeDocument.value.storeName)
-        "تم فحص وإصلاح §{repaired} سجلًا: حُذفت الأسطر الفارغة الزائدة وأعيد حساب أرصدة الحسابات."
+        "تم فحص وإصلاح ${repaired} سجلًا: حُذفت الأسطر الفارغة الزائدة وأعيد حساب أرصدة الحسابات."
     }
 
 
