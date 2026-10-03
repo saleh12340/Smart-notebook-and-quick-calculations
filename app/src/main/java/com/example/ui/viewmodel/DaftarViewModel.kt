@@ -626,7 +626,7 @@ class DaftarViewModel(application: Application) : AndroidViewModel(application) 
             repaired++
         }
         BackupHelper.performAutoBackupIfEnabled(getApplication(), repository.dao, _activeDocument.value.storeName)
-        "تم فحص وإصلاح ${repaired} سجلًا: حُذفت الأسطر الفارغة الزائدة وأعيد حساب أرصدة الحسابات."
+        return "تم فحص وإصلاح ${repaired} سجلًا: حُذفت الأسطر الفارغة الزائدة وأعيد حساب أرصدة الحسابات."
     }
 
 
