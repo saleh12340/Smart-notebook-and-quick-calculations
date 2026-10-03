@@ -58,6 +58,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
@@ -185,6 +186,7 @@ fun ChatTabContent(
     val messages by viewModel.chatMessages.collectAsState()
     val isLoading by viewModel.isAiLoading.collectAsState()
     val selectedModel by viewModel.selectedAiModel.collectAsState()
+    val aiWriteEnabled by viewModel.aiWriteEnabled.collectAsState()
     val listState = rememberLazyListState()
     val context = LocalContext.current
 
@@ -217,6 +219,15 @@ fun ChatTabContent(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text("النموذج:", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.DarkGray)
+            Spacer(modifier = Modifier.width(6.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("تنفيذ", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color(0xFF0F172A))
+                Switch(
+                    checked = aiWriteEnabled,
+                    onCheckedChange = { viewModel.setAiWriteEnabled(it) },
+                    modifier = Modifier.size(34.dp)
+                )
+            }
             Spacer(modifier = Modifier.width(6.dp))
 
             LazyRow(
@@ -368,6 +379,29 @@ fun ChatTabContent(
             }
 
             Spacer(modifier = Modifier.width(6.dp))
+
+            // تنفيذ مباشر بأمر الذكاء الاصطناعي بعد التفويض
+            OutlinedButton(
+                onClick = {
+                    if (inputText.isNotBlank() && !isLoading) {
+                        val command = inputText.trim()
+                        inputText = ""
+                        viewModel.executeAiCommand(command) { message ->
+                            Toast.makeText(context, message, Toast.LENGTH_LONG).show()
+                        }
+                    }
+                },
+                enabled = aiWriteEnabled && !isLoading && inputText.isNotBlank(),
+                modifier = Modifier.height(42.dp),
+                shape = RoundedCornerShape(20.dp),
+                contentPadding = PaddingValues(horizontal = 10.dp)
+            ) {
+                Icon(Icons.Default.AutoAwesome, contentDescription = null, modifier = Modifier.size(16.dp))
+                Spacer(modifier = Modifier.width(4.dp))
+                Text("تنفيذ", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+            }
+
+            Spacer(modifier = Modifier.width(4.dp))
 
             // زر الإرسال
             IconButton(
