@@ -1,0 +1,6 @@
+{
+  "name": "دفتر الفواتير والحسابات",
+  "description": "تطبيق الدفتر العربي لكتابة الملاحظات بين الأسطر، وحسابات العملاء، وفواتير بيع نقداً وآجل مع الطباعة الحرارية والمساعد الذكي",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
