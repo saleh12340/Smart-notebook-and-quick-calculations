@@ -254,16 +254,16 @@ fun InvoiceEditorScreen(
                             unitPrice = entry.unitPrice,
                             totalAmount = entry.totalAmount,
                             onDescriptionChange = { desc ->
-                                viewModel.updateInvoiceEntry(index, desc, entry.quantity, entry.unitPrice)
+                                viewModel.updateInvoiceRowDescription(index, desc)
                             },
                             onQuantityChange = { q ->
-                                viewModel.updateInvoiceEntry(index, entry.description, q, entry.unitPrice)
+                                viewModel.updateInvoiceRowQuantity(index, q)
                             },
                             onUnitPriceChange = { price ->
-                                viewModel.updateInvoiceEntry(index, entry.description, entry.quantity, price)
+                                viewModel.updateInvoiceRowUnitPrice(index, price)
                             },
                             onTotalAmountChange = { total ->
-                                viewModel.updateInvoiceEntryByTotal(index, entry.description, entry.quantity, total)
+                                viewModel.updateInvoiceRowTotal(index, total)
                             },
                             onDelete = {
                                 viewModel.removeEntry(index)

@@ -109,19 +109,19 @@ class DaftarViewModel(application: Application) : AndroidViewModel(application) 
                 if (found != null) {
                     _activeDocument.value = found.document
                     val entries = found.entries.toMutableList()
-                    // توفير سطر فارغ إضافي جاهز للكتابة في الأسفل إذا كانت جميع الأسطر السابقة تحتوي على بيانات
+                    // توفير أسطر فارغة إضافية جاهزة لاستقبال بيانات جديدة فوراً
                     if (found.document.docType == DocumentType.SALES_INVOICE) {
-                        val last = entries.lastOrNull()
-                        if (last == null || last.description.isNotBlank() || last.totalAmount > 0.0) {
+                        while (entries.size < 6 || (entries.lastOrNull()?.let { it.description.isNotBlank() || it.totalAmount > 0.0 } == true)) {
                             entries.add(DocumentEntryEntity(description = "", quantity = 1.0, unitPrice = 0.0, totalAmount = 0.0))
+                            if (entries.size >= 6 && entries.last().description.isBlank() && entries.last().totalAmount == 0.0) break
                         }
                     } else if (found.document.docType == DocumentType.CUSTOMER_LEDGER) {
-                        val last = entries.lastOrNull()
-                        if (last == null || last.description.isNotBlank() || last.debit > 0.0 || last.credit > 0.0) {
-                            val dateFormat = SimpleDateFormat("yyyy/MM/dd", Locale("ar"))
-                            val dayFormat = SimpleDateFormat("EEEE", Locale("ar"))
-                            val now = Date()
+                        val dateFormat = SimpleDateFormat("yyyy/MM/dd", Locale("ar"))
+                        val dayFormat = SimpleDateFormat("EEEE", Locale("ar"))
+                        val now = Date()
+                        while (entries.size < 6 || (entries.lastOrNull()?.let { it.description.isNotBlank() || it.debit > 0.0 || it.credit > 0.0 } == true)) {
                             entries.add(DocumentEntryEntity(runningBalance = 0.0, credit = 0.0, debit = 0.0, entryDate = dateFormat.format(now), entryDay = dayFormat.format(now), description = ""))
+                            if (entries.size >= 6 && entries.last().description.isBlank() && entries.last().debit == 0.0 && entries.last().credit == 0.0) break
                         }
                     }
                     _activeEntries.value = if (found.document.docType == DocumentType.CUSTOMER_LEDGER) recalculateLedgerBalances(entries) else entries
@@ -202,10 +202,10 @@ class DaftarViewModel(application: Application) : AndroidViewModel(application) 
         val dayStr = dayFormat.format(now)
 
         return when (type) {
-            DocumentType.SALES_INVOICE -> listOf(
+            DocumentType.SALES_INVOICE -> List(6) {
                 DocumentEntryEntity(description = "", quantity = 1.0, unitPrice = 0.0, totalAmount = 0.0)
-            )
-            DocumentType.CUSTOMER_LEDGER -> listOf(
+            }
+            DocumentType.CUSTOMER_LEDGER -> List(6) {
                 DocumentEntryEntity(
                     runningBalance = 0.0,
                     credit = 0.0,
@@ -214,7 +214,7 @@ class DaftarViewModel(application: Application) : AndroidViewModel(application) 
                     entryDay = dayStr,
                     description = ""
                 )
-            )
+            }
             DocumentType.LINED_NOTE -> emptyList()
         }
     }
@@ -227,43 +227,87 @@ class DaftarViewModel(application: Application) : AndroidViewModel(application) 
         _activeDocument.value = _activeDocument.value.copy(notes = text)
     }
 
-    // --- Invoice Item Management ---
-    fun updateInvoiceEntry(index: Int, description: String, quantity: Double, unitPrice: Double) {
+    // --- Invoice Item Management: Total Amount is the primary driver ---
+
+    // 1. تعديل القيمة الإجمالية مباشرة (الأساس المحاسبي للفاتورة)
+    fun updateInvoiceRowTotal(index: Int, totalAmount: Double) {
         val current = _activeEntries.value.toMutableList()
         if (index in current.indices) {
-            val total = quantity * unitPrice
-            current[index] = current[index].copy(
-                description = description,
-                quantity = quantity,
+            val cur = current[index]
+            val q = if (cur.quantity <= 0.0) 1.0 else cur.quantity
+            val unitPrice = if (totalAmount > 0.0 && q > 0.0) totalAmount / q else 0.0
+            current[index] = cur.copy(
+                quantity = q,
                 unitPrice = unitPrice,
-                totalAmount = total
+                totalAmount = totalAmount
             )
-            // التوسع التلقائي للفاتورة: إذا بدأ المستخدم بالكتابة في السطر الأخير، يضاف سطر فارغ جديد تلقائياً
-            if (index == current.lastIndex && (description.isNotBlank() || total > 0.0)) {
+            // التوسع التلقائي إذا بدأ المستخدم بالكتابة في السطر الأخير
+            if (index == current.lastIndex && (cur.description.isNotBlank() || totalAmount > 0.0)) {
                 current.add(DocumentEntryEntity(description = "", quantity = 1.0, unitPrice = 0.0, totalAmount = 0.0))
             }
             _activeEntries.value = current
         }
     }
 
-    // إتاحة إدخال القيمة الإجمالية مباشرة وحساب سعر الوحدة تلقائياً
-    fun updateInvoiceEntryByTotal(index: Int, description: String, quantity: Double, totalAmount: Double) {
+    // 2. تعديل اسم الصنف / التفاصيل
+    fun updateInvoiceRowDescription(index: Int, description: String) {
         val current = _activeEntries.value.toMutableList()
         if (index in current.indices) {
-            val q = if (quantity <= 0.0) 1.0 else quantity
-            val unitPrice = totalAmount / q
-            current[index] = current[index].copy(
-                description = description,
-                quantity = q,
-                unitPrice = unitPrice,
-                totalAmount = totalAmount
-            )
-            // التوسع التلقائي للفاتورة: إذا بدأ المستخدم بالكتابة في السطر الأخير، يضاف سطر فارغ جديد تلقائياً
-            if (index == current.lastIndex && (description.isNotBlank() || totalAmount > 0.0)) {
+            val cur = current[index]
+            current[index] = cur.copy(description = description)
+            if (index == current.lastIndex && (description.isNotBlank() || cur.totalAmount > 0.0)) {
                 current.add(DocumentEntryEntity(description = "", quantity = 1.0, unitPrice = 0.0, totalAmount = 0.0))
             }
             _activeEntries.value = current
         }
+    }
+
+    // 3. تعديل الكمية / العدد
+    fun updateInvoiceRowQuantity(index: Int, quantity: Double) {
+        val current = _activeEntries.value.toMutableList()
+        if (index in current.indices) {
+            val q = if (quantity <= 0.0) 1.0 else quantity
+            val cur = current[index]
+            val newTotal = if (cur.unitPrice > 0.0) q * cur.unitPrice else cur.totalAmount
+            val newPrice = if (newTotal > 0.0 && q > 0.0) newTotal / q else cur.unitPrice
+            current[index] = cur.copy(
+                quantity = q,
+                unitPrice = newPrice,
+                totalAmount = newTotal
+            )
+            if (index == current.lastIndex && (cur.description.isNotBlank() || newTotal > 0.0)) {
+                current.add(DocumentEntryEntity(description = "", quantity = 1.0, unitPrice = 0.0, totalAmount = 0.0))
+            }
+            _activeEntries.value = current
+        }
+    }
+
+    // 4. تعديل سعر الوحدة (اختياري، يحدّث الإجمالي تلقائياً)
+    fun updateInvoiceRowUnitPrice(index: Int, unitPrice: Double) {
+        val current = _activeEntries.value.toMutableList()
+        if (index in current.indices) {
+            val cur = current[index]
+            val q = if (cur.quantity <= 0.0) 1.0 else cur.quantity
+            val total = q * unitPrice
+            current[index] = cur.copy(
+                unitPrice = unitPrice,
+                totalAmount = total
+            )
+            if (index == current.lastIndex && (cur.description.isNotBlank() || total > 0.0)) {
+                current.add(DocumentEntryEntity(description = "", quantity = 1.0, unitPrice = 0.0, totalAmount = 0.0))
+            }
+            _activeEntries.value = current
+        }
+    }
+
+    fun updateInvoiceEntry(index: Int, description: String, quantity: Double, unitPrice: Double) {
+        updateInvoiceRowUnitPrice(index, unitPrice)
+        updateInvoiceRowDescription(index, description)
+    }
+
+    fun updateInvoiceEntryByTotal(index: Int, description: String, quantity: Double, totalAmount: Double) {
+        updateInvoiceRowTotal(index, totalAmount)
+        updateInvoiceRowDescription(index, description)
     }
 
     fun addInvoiceEntry() {

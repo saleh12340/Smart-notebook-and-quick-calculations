@@ -4,6 +4,7 @@ import android.annotation.SuppressLint
 import android.bluetooth.BluetoothDevice
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -27,7 +28,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Bluetooth
 import androidx.compose.material.icons.filled.BluetoothConnected
-import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Print
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.AlertDialog
@@ -56,12 +57,11 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.text.AnnotatedString
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -80,7 +80,6 @@ fun ThermalPrintScreen(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val clipboardManager = LocalClipboardManager.current
     val activeDoc by viewModel.activeDocument.collectAsState()
     val activeEntries by viewModel.activeEntries.collectAsState()
 
@@ -94,9 +93,11 @@ fun ThermalPrintScreen(
     }
 
     val docWithEntries = DocumentWithEntries(activeDoc, activeEntries)
-    val thermalText = ThermalPrintHelper.generateThermalTextReceipt(docWithEntries)
+    val receiptBitmap = remember(docWithEntries, is80mm) {
+        ThermalPrintHelper.generateReceiptBitmap(docWithEntries, is80mm)
+    }
 
-    // لون الترويسة حسب نوع الوثيقة (أزرق للفاتورة، أخضر للحساب، عسلي للملاحظة)
+    // لون الترويسة حسب نوع الوثيقة
     val headerThemeColor = when (activeDoc.docType) {
         DocumentType.SALES_INVOICE -> Color(0xFF1E40AF)
         DocumentType.CUSTOMER_LEDGER -> Color(0xFF047857)
@@ -109,13 +110,13 @@ fun ThermalPrintScreen(
                 title = {
                     Column {
                         Text(
-                            text = "معاينة وطباعة حرارية",
+                            text = "معاينة صورة الإيصال الحراري",
                             fontWeight = FontWeight.Bold,
                             fontSize = 16.sp,
                             color = Color.White
                         )
                         Text(
-                            text = "بلوتوث وطابعات النظام (${if (is80mm) "80mm" else "58mm"})",
+                            text = "صورة إيصال نقطية (${if (is80mm) "80mm" else "58mm"})",
                             fontSize = 11.sp,
                             color = Color.White.copy(alpha = 0.8f)
                         )
@@ -132,11 +133,11 @@ fun ThermalPrintScreen(
                 },
                 actions = {
                     IconButton(onClick = {
-                        ThermalPrintHelper.shareReceiptText(context, docWithEntries)
+                        ThermalPrintHelper.shareReceiptImage(context, receiptBitmap)
                     }) {
                         Icon(
                             imageVector = Icons.Default.Share,
-                            contentDescription = "مشاركة",
+                            contentDescription = "مشاركة صورة الإيصال",
                             tint = Color.White
                         )
                     }
@@ -193,12 +194,12 @@ fun ThermalPrintScreen(
                 }
             }
 
-            // أزرار الطباعة الرئيسية: بلوتوث + طباعة النظام + نسخ
+            // أزرار الطباعة والمشاركة
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                // زر طباعة البلوتوث المباشرة للطابعات الحرارية (ESC/POS)
+                // 1. زر طباعة البلوتوث المباشرة للطابعات الحرارية كصورة (ESC/POS Raster)
                 Button(
                     onClick = {
                         val devices = ThermalPrintHelper.getPairedBluetoothPrinters(context)
@@ -222,57 +223,57 @@ fun ThermalPrintScreen(
                     }
                 }
 
-                // زر طباعة النظام PrintManager (يدعم أي طابعة أو تصدير PDF)
+                // 2. زر مشاركة صورة الإيصال (PNG) عبر واتساب
                 Button(
+                    onClick = {
+                        ThermalPrintHelper.shareReceiptImage(context, receiptBitmap)
+                    },
+                    modifier = Modifier.weight(1.2f),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF16A34A)),
+                    shape = RoundedCornerShape(8.dp)
+                ) {
+                    Icon(Icons.Default.Image, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("مشاركة صورة", fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                }
+
+                // 3. زر طباعة النظام PrintManager (PDF / طابعات Wi-Fi)
+                OutlinedButton(
                     onClick = {
                         ThermalPrintHelper.printDocument(context, docWithEntries)
                     },
-                    modifier = Modifier.weight(1.1f),
-                    colors = ButtonDefaults.buttonColors(containerColor = headerThemeColor),
+                    modifier = Modifier.weight(1.0f),
                     shape = RoundedCornerShape(8.dp)
                 ) {
-                    Icon(Icons.Default.Print, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text("طباعة نظام", fontWeight = FontWeight.Bold, fontSize = 11.sp)
-                }
-
-                // زر نسخ النص
-                OutlinedButton(
-                    onClick = {
-                        clipboardManager.setText(AnnotatedString(thermalText))
-                        Toast.makeText(context, "تم نسخ نص الإيصال", Toast.LENGTH_SHORT).show()
-                    },
-                    modifier = Modifier.weight(0.9f),
-                    shape = RoundedCornerShape(8.dp)
-                ) {
-                    Icon(Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Icon(Icons.Default.Print, contentDescription = null, modifier = Modifier.size(16.dp))
                     Spacer(modifier = Modifier.width(2.dp))
-                    Text("نسخ", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    Text("نظام", fontSize = 11.sp, fontWeight = FontWeight.Bold)
                 }
             }
 
             Spacer(modifier = Modifier.height(10.dp))
 
-            // ورقة الإيصال الحراري محاكية للواقع بدقة
+            // ورقة الإيصال الحراري كصورة رسومية مطبوعة حقيقية
             Card(
                 modifier = Modifier
-                    .fillMaxWidth(if (is80mm) 1f else 0.88f)
-                    .border(1.dp, Color(0xFFCBD5E1), RoundedCornerShape(4.dp)),
+                    .fillMaxWidth(if (is80mm) 1f else 0.92f)
+                    .border(1.5.dp, Color(0xFF94A3B8), RoundedCornerShape(8.dp)),
                 colors = CardDefaults.cardColors(containerColor = Color.White),
-                elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
-                shape = RoundedCornerShape(4.dp)
+                elevation = CardDefaults.cardElevation(defaultElevation = 6.dp),
+                shape = RoundedCornerShape(8.dp)
             ) {
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(10.dp)
+                        .padding(6.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    Text(
-                        text = thermalText,
-                        fontFamily = FontFamily.Monospace,
-                        fontSize = 11.sp,
-                        color = Color.Black,
-                        lineHeight = 15.sp
+                    Image(
+                        bitmap = receiptBitmap.asImageBitmap(),
+                        contentDescription = "صورة الإيصال الحراري المطبوع",
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(4.dp))
                     )
                 }
             }
@@ -281,15 +282,15 @@ fun ThermalPrintScreen(
 
             Button(
                 onClick = {
-                    ThermalPrintHelper.shareReceiptText(context, docWithEntries)
+                    ThermalPrintHelper.shareReceiptImage(context, receiptBitmap)
                 },
                 modifier = Modifier.fillMaxWidth(),
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF16A34A)),
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1E3A8A)),
                 shape = RoundedCornerShape(8.dp)
             ) {
                 Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(18.dp))
                 Spacer(modifier = Modifier.width(6.dp))
-                Text("مشاركة الفاتورة عبر واتساب والتطبيقات", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                Text("إرسال صورة الإيصال إلى العميل عبر واتساب", fontWeight = FontWeight.Bold, fontSize = 12.sp)
             }
         }
     }

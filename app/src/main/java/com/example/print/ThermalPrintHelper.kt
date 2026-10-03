@@ -65,9 +65,8 @@ object ThermalPrintHelper {
             // 1. تهيئة الطابعة ESC @
             outputStream.write(byteArrayOf(0x1B, 0x40))
 
-            // 2. إنشاء صورة إيصال نقية بالأبيض والأسود مع نصوص عربية واضحة
-            val paperWidth = if (is80mm) 576 else 384
-            val bitmap = generateReceiptBitmap(docWithEntries, paperWidth)
+            // 2. إنشاء صورة إيصال نقية مطبوعة كصورة
+            val bitmap = generateReceiptBitmap(docWithEntries, is80mm)
 
             // 3. تحويل الصورة إلى أوامر نقطية ESC/POS (GS v 0)
             val escPosBytes = bitmapToEscPosRaster(bitmap)
@@ -90,22 +89,26 @@ object ThermalPrintHelper {
     }
 
     /**
-     * رسم الإيصال كصورة Canvas مخصصة للطباعة الحرارية بدقة وخطوط عربية واضحة
+     * رسم الإيصال كصورة مطبوعة محاكية لأجهزة الكاشير ونظام البيان تماماً كما في الصورة
      */
-    private fun generateReceiptBitmap(docWithEntries: DocumentWithEntries, width: Int): Bitmap {
+    fun generateReceiptBitmap(docWithEntries: DocumentWithEntries, is80mm: Boolean = false): Bitmap {
         val doc = docWithEntries.document
-        val entries = docWithEntries.entries
+        val entries = docWithEntries.entries.filter { it.description.isNotBlank() || it.totalAmount > 0.0 || it.debit > 0.0 || it.credit > 0.0 }
+            .ifEmpty { docWithEntries.entries.take(1) }
+
+        val width = if (is80mm) 576 else 384
+        val pad = 12f
 
         // تقدير الارتفاع بناء على عدد الأصناف
-        val estimatedHeight = 350 + (entries.size * 35) + 200
-        val bitmap = Bitmap.createBitmap(width, estimatedHeight, Bitmap.Config.RGB_565)
+        val estimatedHeight = 550 + (entries.size * 42) + 300
+        val bitmap = Bitmap.createBitmap(width, estimatedHeight, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bitmap)
         canvas.drawColor(Color.WHITE)
 
-        val textPaint = Paint().apply {
+        val boldPaint = Paint().apply {
             color = Color.BLACK
             isAntiAlias = true
-            textSize = 20f
+            textSize = if (is80mm) 26f else 22f
             typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
             textAlign = Paint.Align.CENTER
         }
@@ -113,139 +116,358 @@ object ThermalPrintHelper {
         val regularPaint = Paint().apply {
             color = Color.BLACK
             isAntiAlias = true
-            textSize = 17f
-            textAlign = Paint.Align.RIGHT
+            textSize = if (is80mm) 17f else 14f
+            textAlign = Paint.Align.CENTER
         }
 
         val linePaint = Paint().apply {
             color = Color.BLACK
+            style = Paint.Style.STROKE
             strokeWidth = 2f
+            isAntiAlias = true
         }
 
-        var y = 35f
-
-        // اسم المحل
-        textPaint.textSize = 24f
-        canvas.drawText(doc.storeName.ifEmpty { "بقالة العزي" }, width / 2f, y, textPaint)
-        y += 28f
-
-        // تفاصيل المتجر
-        regularPaint.textAlign = Paint.Align.CENTER
-        regularPaint.textSize = 15f
-        if (doc.storeAddress.isNotEmpty()) {
-            canvas.drawText(doc.storeAddress, width / 2f, y, regularPaint)
-            y += 22f
-        }
-        if (doc.storePhone.isNotEmpty()) {
-            canvas.drawText("هاتف: ${doc.storePhone}", width / 2f, y, regularPaint)
-            y += 22f
+        val boxPaint = Paint().apply {
+            color = Color.BLACK
+            style = Paint.Style.STROKE
+            strokeWidth = 1.5f
+            isAntiAlias = true
         }
 
-        // خط فاصل مزدوج
-        canvas.drawLine(10f, y, width - 10f, y, linePaint)
-        y += 4f
-        canvas.drawLine(10f, y, width - 10f, y, linePaint)
+        var y = 32f
+
+        // 1. الترويسة الرئيسية: اسم المتجر والشعار
+        boldPaint.textSize = if (is80mm) 28f else 24f
+        canvas.drawText(doc.storeName.ifEmpty { "بقالة العزي للتجارة" }, width / 2f, y, boldPaint)
         y += 24f
 
-        // عنوان الفاتورة ورقمها
-        textPaint.textSize = 19f
-        val docTitle = when (doc.docType) {
-            DocumentType.SALES_INVOICE -> "فاتورة بيع " + if (doc.paymentType == PaymentType.CASH) "نقداً" else "آجل"
-            DocumentType.CUSTOMER_LEDGER -> "كشف حساب عميل"
-            DocumentType.LINED_NOTE -> "ملاحظة دفترية"
-        }
-        canvas.drawText("[ $docTitle ]", width / 2f, y, textPaint)
-        y += 26f
-
-        regularPaint.textAlign = Paint.Align.RIGHT
-        regularPaint.textSize = 16f
-        canvas.drawText("رقم السند: ${doc.docNumber}", width - 15f, y, regularPaint)
-        y += 22f
-        canvas.drawText("التاريخ: ${doc.dateString} (${doc.dayString})", width - 15f, y, regularPaint)
-        y += 22f
-        if (doc.customerName.isNotEmpty()) {
-            canvas.drawText("المطلوب من: ${doc.customerName}", width - 15f, y, regularPaint)
-            y += 24f
-        }
-
-        // خط فاصل
-        canvas.drawLine(10f, y, width - 10f, y, linePaint)
-        y += 22f
-
-        // ترويسة الجدول
+        regularPaint.textSize = if (is80mm) 16f else 13f
         regularPaint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-        if (doc.docType == DocumentType.SALES_INVOICE) {
-            canvas.drawText("الإجمالي", width - 15f, y, regularPaint)
-            canvas.drawText("العدد", width * 0.70f, y, regularPaint)
-            canvas.drawText("السعر", width * 0.48f, y, regularPaint)
-            canvas.drawText("البيان", 60f, y, regularPaint)
-            y += 8f
-            canvas.drawLine(10f, y, width - 10f, y, linePaint)
-            y += 24f
+        canvas.drawText("خدمات تجارية - مواد غذائية - جملة وتجزئة", width / 2f, y, regularPaint)
+        y += 22f
 
-            regularPaint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
-            for (item in entries) {
-                canvas.drawText(String.format(Locale.US, "%.1f", item.totalAmount), width - 15f, y, regularPaint)
-                canvas.drawText(String.format(Locale.US, "%.1f", item.quantity), width * 0.70f, y, regularPaint)
-                canvas.drawText(String.format(Locale.US, "%.1f", item.unitPrice), width * 0.48f, y, regularPaint)
-                canvas.drawText(item.description.take(14), 60f, y, regularPaint)
-                y += 24f
-            }
+        regularPaint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
+        val phoneStr = if (doc.storePhone.isNotEmpty()) doc.storePhone else "776425052"
+        val regStr = if (doc.commercialReg.isNotEmpty()) doc.commercialReg else "22510"
+        canvas.drawText("س.ت: $regStr • هاتف: $phoneStr", width / 2f, y, regularPaint)
+        y += 22f
 
-            y += 4f
-            canvas.drawLine(10f, y, width - 10f, y, linePaint)
-            y += 26f
+        // 2. مربعات معلومات الفاتورة المؤطرة (كما في صورة الكاشير تماماً)
+        val boxHeight = 28f
+        val boxWidth3 = (width - 2 * pad - 8f) / 3f
 
-            textPaint.textSize = 21f
-            textPaint.textAlign = Paint.Align.RIGHT
-            canvas.drawText("الإجمالي الكلي: ${String.format(Locale.US, "%.2f", docWithEntries.invoiceTotal)} ريال", width - 15f, y, textPaint)
-            y += 28f
-        } else if (doc.docType == DocumentType.CUSTOMER_LEDGER) {
-            canvas.drawText("التاريخ", width - 15f, y, regularPaint)
-            canvas.drawText("البيان", width * 0.68f, y, regularPaint)
-            canvas.drawText("عليه", width * 0.38f, y, regularPaint)
-            canvas.drawText("له", width * 0.23f, y, regularPaint)
-            canvas.drawText("الرصيد", 50f, y, regularPaint)
-            y += 8f
-            canvas.drawLine(10f, y, width - 10f, y, linePaint)
-            y += 24f
-
-            regularPaint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
-            for (item in entries) {
-                val dt = item.entryDate.takeLast(5) // MM/dd
-                canvas.drawText(dt, width - 15f, y, regularPaint)
-                canvas.drawText(item.description.take(10), width * 0.68f, y, regularPaint)
-                canvas.drawText(if (item.debit > 0) String.format(Locale.US, "%.0f", item.debit) else "-", width * 0.38f, y, regularPaint)
-                canvas.drawText(if (item.credit > 0) String.format(Locale.US, "%.0f", item.credit) else "-", width * 0.23f, y, regularPaint)
-                canvas.drawText(String.format(Locale.US, "%.0f", item.runningBalance), 50f, y, regularPaint)
-                y += 24f
-            }
-
-            y += 4f
-            canvas.drawLine(10f, y, width - 10f, y, linePaint)
-            y += 24f
-
-            textPaint.textSize = 18f
-            textPaint.textAlign = Paint.Align.RIGHT
-            canvas.drawText("إجمالي له (دائن): ${String.format(Locale.US, "%.2f", docWithEntries.totalCredit)} ريال", width - 15f, y, textPaint)
-            y += 24f
-            canvas.drawText("إجمالي عليه (مدين): ${String.format(Locale.US, "%.2f", docWithEntries.totalDebit)} ريال", width - 15f, y, textPaint)
-            y += 26f
-            val netLabel = if (docWithEntries.netBalance >= 0) "عليه (مدين)" else "له (دائن)"
-            canvas.drawText("صافي الرصيد: ${String.format(Locale.US, "%.2f", Math.abs(docWithEntries.netBalance))} ريال ($netLabel)", width - 15f, y, textPaint)
-            y += 28f
+        // السطر الأول من المربعات: [ زبون نقدي ] [ مبيع ] [ نقداً ]
+        val cName = if (doc.customerName.isNotEmpty()) doc.customerName.take(12) else "زبون نقدي"
+        val pType = if (doc.paymentType == PaymentType.CASH) "نقداً" else "آجل"
+        val docTypeTitle = when (doc.docType) {
+            DocumentType.SALES_INVOICE -> "مبيع"
+            DocumentType.CUSTOMER_LEDGER -> "حساب"
+            DocumentType.LINED_NOTE -> "ملاحظة"
         }
 
-        // الشروط والتذييل
-        regularPaint.textAlign = Paint.Align.CENTER
-        regularPaint.textSize = 13f
-        canvas.drawText("* البضاعة المباعة لا ترد ولا تستبدل إلا في حال الخطأ *", width / 2f, y, regularPaint)
-        y += 22f
-        canvas.drawText("*** شكراً لتعاملكم معنا ***", width / 2f, y, regularPaint)
+        // رسم المربعات الثلاثة بزوايا دائرية
+        // المربع الأيمن (الزبون)
+        val r1 = android.graphics.RectF(width - pad - boxWidth3, y, width - pad, y + boxHeight)
+        canvas.drawRoundRect(r1, 8f, 8f, boxPaint)
+        canvas.drawText(cName, r1.centerX(), r1.centerY() + 5f, regularPaint)
 
-        // اقتصاص الارتفاع الحقيقي للصورة
-        val actualHeight = (y + 30).toInt().coerceAtLeast(100)
+        // المربع الأوسط (نوع السند: مبيع)
+        val r2 = android.graphics.RectF(r1.left - 4f - boxWidth3, y, r1.left - 4f, y + boxHeight)
+        canvas.drawRoundRect(r2, 8f, 8f, boxPaint)
+        canvas.drawText(docTypeTitle, r2.centerX(), r2.centerY() + 5f, regularPaint)
+
+        // المربع الأيسر (طريقة الدفع: نقداً/آجل)
+        val r3 = android.graphics.RectF(pad, y, pad + boxWidth3, y + boxHeight)
+        canvas.drawRoundRect(r3, 8f, 8f, boxPaint)
+        canvas.drawText(pType, r3.centerX(), r3.centerY() + 5f, regularPaint)
+
+        y += boxHeight + 6f
+
+        // السطر الثاني من المربعات: [ رقم : 1 ] [ 2026/10/03 ] [ الوقت ]
+        val timeStr = java.text.SimpleDateFormat("hh:mm a", Locale.US).format(java.util.Date())
+            .replace("AM", "ص").replace("PM", "م")
+        val dateOnlyStr = if (doc.dateString.isNotEmpty()) doc.dateString else java.text.SimpleDateFormat("yyyy/MM/dd", Locale.US).format(java.util.Date())
+
+        val r4 = android.graphics.RectF(width - pad - boxWidth3, y, width - pad, y + boxHeight)
+        canvas.drawRoundRect(r4, 8f, 8f, boxPaint)
+        canvas.drawText("رقم : ${doc.docNumber.takeLast(6)}", r4.centerX(), r4.centerY() + 5f, regularPaint)
+
+        val r5 = android.graphics.RectF(r4.left - 4f - boxWidth3, y, r4.left - 4f, y + boxHeight)
+        canvas.drawRoundRect(r5, 8f, 8f, boxPaint)
+        canvas.drawText(dateOnlyStr, r5.centerX(), r5.centerY() + 5f, regularPaint)
+
+        val r6 = android.graphics.RectF(pad, y, pad + boxWidth3, y + boxHeight)
+        canvas.drawRoundRect(r6, 8f, 8f, boxPaint)
+        canvas.drawText(timeStr, r6.centerX(), r6.centerY() + 5f, regularPaint)
+
+        y += boxHeight + 10f
+
+        // 3. جدول الأصناف الشبكي الكامل مع حدود الخلايا (Grid Table)
+        val tableLeft = pad
+        val tableRight = width - pad
+        val tableTop = y
+        val rowHeight = 32f
+
+        if (doc.docType == DocumentType.SALES_INVOICE) {
+            // توزيع أعمدة الجدول: م (أقصى اليمين) | المادة | الكمية | السعر | الإجمالي (أقصى اليسار)
+            val colMWidth = 28f
+            val colTotalWidth = if (is80mm) 95f else 75f
+            val colPriceWidth = if (is80mm) 85f else 65f
+            val colQtyWidth = if (is80mm) 65f else 50f
+
+            val xM = tableRight - colMWidth
+            val xQty = tableLeft + colTotalWidth + colPriceWidth
+            val xPrice = tableLeft + colTotalWidth
+            val xTotal = tableLeft
+
+            // رسم ترويسة الجدول
+            val headerRect = android.graphics.RectF(tableLeft, y, tableRight, y + rowHeight)
+            canvas.drawRect(headerRect, boxPaint)
+
+            boldPaint.textSize = if (is80mm) 14f else 12f
+            canvas.drawText("م", tableRight - (colMWidth / 2f), y + 20f, boldPaint)
+            canvas.drawText("المــــادة", (xM + xQty + colQtyWidth) / 2f, y + 20f, boldPaint)
+            canvas.drawText("الكمية", xQty + (colQtyWidth / 2f), y + 20f, boldPaint)
+            canvas.drawText("السعر", xPrice + (colPriceWidth / 2f), y + 20f, boldPaint)
+            canvas.drawText("الإجمالي", xTotal + (colTotalWidth / 2f), y + 20f, boldPaint)
+
+            // رسم الخطوط العمودية للترويسة
+            canvas.drawLine(xM, y, xM, y + rowHeight, linePaint)
+            canvas.drawLine(xQty + colQtyWidth, y, xQty + colQtyWidth, y + rowHeight, linePaint)
+            canvas.drawLine(xPrice + colPriceWidth, y, xPrice + colPriceWidth, y + rowHeight, linePaint)
+            canvas.drawLine(xPrice, y, xPrice, y + rowHeight, linePaint)
+
+            y += rowHeight
+
+            // أسطر الأصناف
+            regularPaint.textSize = if (is80mm) 15f else 12.5f
+            var totalQtyCount = 0.0
+
+            entries.forEachIndexed { idx, item ->
+                val rItem = android.graphics.RectF(tableLeft, y, tableRight, y + rowHeight)
+                canvas.drawRect(rItem, boxPaint)
+
+                // الخطوط العمودية للسطر
+                canvas.drawLine(xM, y, xM, y + rowHeight, linePaint)
+                canvas.drawLine(xQty + colQtyWidth, y, xQty + colQtyWidth, y + rowHeight, linePaint)
+                canvas.drawLine(xPrice + colPriceWidth, y, xPrice + colPriceWidth, y + rowHeight, linePaint)
+                canvas.drawLine(xPrice, y, xPrice, y + rowHeight, linePaint)
+
+                // القيم
+                canvas.drawText("${idx + 1}", tableRight - (colMWidth / 2f), y + 21f, regularPaint)
+                val descStr = item.description.ifEmpty { "صنف عام" }.take(14)
+                canvas.drawText(descStr, (xM + xQty + colQtyWidth) / 2f, y + 21f, regularPaint)
+
+                val qStr = if (item.quantity % 1 == 0.0) item.quantity.toInt().toString() else String.format(Locale.US, "%.1f", item.quantity)
+                canvas.drawText(qStr, xQty + (colQtyWidth / 2f), y + 21f, regularPaint)
+                totalQtyCount += item.quantity
+
+                val pStr = if (item.unitPrice % 1 == 0.0) item.unitPrice.toInt().toString() else String.format(Locale.US, "%.1f", item.unitPrice)
+                canvas.drawText(pStr, xPrice + (colPriceWidth / 2f), y + 21f, regularPaint)
+
+                val tStr = if (item.totalAmount % 1 == 0.0) item.totalAmount.toInt().toString() else String.format(Locale.US, "%.1f", item.totalAmount)
+                boldPaint.textSize = if (is80mm) 15f else 12.5f
+                canvas.drawText(tStr, xTotal + (colTotalWidth / 2f), y + 21f, boldPaint)
+
+                y += rowHeight
+            }
+
+            // سطر مجاميع الجدول
+            val totalRowRect = android.graphics.RectF(tableLeft, y, tableRight, y + rowHeight)
+            canvas.drawRect(totalRowRect, boxPaint)
+            canvas.drawLine(xQty + colQtyWidth, y, xQty + colQtyWidth, y + rowHeight, linePaint)
+            canvas.drawLine(xPrice, y, xPrice, y + rowHeight, linePaint)
+
+            boldPaint.textSize = if (is80mm) 14f else 12f
+            canvas.drawText("المجموع", (tableRight + xQty + colQtyWidth) / 2f, y + 21f, boldPaint)
+
+            val totalQStr = if (totalQtyCount % 1 == 0.0) totalQtyCount.toInt().toString() else String.format(Locale.US, "%.1f", totalQtyCount)
+            canvas.drawText(totalQStr, xQty + (colQtyWidth / 2f), y + 21f, boldPaint)
+
+            val totalInvStr = String.format(Locale.US, "%.0f", docWithEntries.invoiceTotal)
+            boldPaint.textSize = if (is80mm) 16f else 13.5f
+            canvas.drawText(totalInvStr, xTotal + (colTotalWidth / 2f), y + 21f, boldPaint)
+
+            y += rowHeight + 12f
+
+            // 4. صناديق الحسم والصافي للدفع (كما في الصورة تماماً)
+            val halfBoxWidth = (width - 2 * pad - 6f) / 2f
+
+            // [ الحسم : . ]
+            val rDiscount = android.graphics.RectF(width - pad - halfBoxWidth, y, width - pad, y + 36f)
+            canvas.drawRoundRect(rDiscount, 10f, 10f, boxPaint)
+            regularPaint.textSize = if (is80mm) 16f else 13f
+            canvas.drawText("الحســـم :  0.00", rDiscount.centerX(), rDiscount.centerY() + 5f, regularPaint)
+
+            // [ الصافي للدفع : 7,000 ريال ]
+            val rNet = android.graphics.RectF(pad, y, pad + halfBoxWidth, y + 36f)
+            canvas.drawRoundRect(rNet, 10f, 10f, boxPaint)
+            boldPaint.textSize = if (is80mm) 17f else 14f
+            canvas.drawText("الصافي للدفع : $totalInvStr ريال", rNet.centerX(), rNet.centerY() + 5f, boldPaint)
+
+            y += 42f
+
+            // 5. صندوق التفقيط (المبلغ كتابة بالحروف)
+            val tafqeetText = "فقط " + tafqeetArabic(docWithEntries.invoiceTotal) + " لا غير"
+            val rTafqeet = android.graphics.RectF(pad, y, width - pad, y + 32f)
+            canvas.drawRoundRect(rTafqeet, 10f, 10f, boxPaint)
+            regularPaint.textSize = if (is80mm) 15f else 12.5f
+            regularPaint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            canvas.drawText(tafqeetText, rTafqeet.centerX(), rTafqeet.centerY() + 5f, regularPaint)
+
+            y += 40f
+
+        } else {
+            // كشف حساب عميل
+            val colBalanceWidth = if (is80mm) 90f else 70f
+            val colCreditWidth = if (is80mm) 75f else 60f
+            val colDebitWidth = if (is80mm) 75f else 60f
+            val colDateWidth = if (is80mm) 85f else 65f
+
+            val headerRect = android.graphics.RectF(tableLeft, y, tableRight, y + rowHeight)
+            canvas.drawRect(headerRect, boxPaint)
+
+            boldPaint.textSize = if (is80mm) 13f else 11.5f
+            canvas.drawText("التاريخ", tableRight - (colDateWidth / 2f), y + 20f, boldPaint)
+            canvas.drawText("البيان", (tableRight - colDateWidth + tableLeft + colBalanceWidth + colCreditWidth + colDebitWidth) / 2f, y + 20f, boldPaint)
+            canvas.drawText("عليه", tableLeft + colBalanceWidth + colCreditWidth + (colDebitWidth / 2f), y + 20f, boldPaint)
+            canvas.drawText("له", tableLeft + colBalanceWidth + (colCreditWidth / 2f), y + 20f, boldPaint)
+            canvas.drawText("الرصيد", tableLeft + (colBalanceWidth / 2f), y + 20f, boldPaint)
+
+            y += rowHeight
+
+            regularPaint.textSize = if (is80mm) 14f else 12f
+            entries.forEach { item ->
+                val rItem = android.graphics.RectF(tableLeft, y, tableRight, y + rowHeight)
+                canvas.drawRect(rItem, boxPaint)
+
+                val dt = if (item.entryDate.length >= 5) item.entryDate.takeLast(5) else item.entryDate
+                canvas.drawText(dt, tableRight - (colDateWidth / 2f), y + 21f, regularPaint)
+                canvas.drawText(item.description.take(10), (tableRight - colDateWidth + tableLeft + colBalanceWidth + colCreditWidth + colDebitWidth) / 2f, y + 21f, regularPaint)
+
+                canvas.drawText(if (item.debit > 0) String.format(Locale.US, "%.0f", item.debit) else "-", tableLeft + colBalanceWidth + colCreditWidth + (colDebitWidth / 2f), y + 21f, regularPaint)
+                canvas.drawText(if (item.credit > 0) String.format(Locale.US, "%.0f", item.credit) else "-", tableLeft + colBalanceWidth + (colCreditWidth / 2f), y + 21f, regularPaint)
+                boldPaint.textSize = if (is80mm) 14f else 12f
+                canvas.drawText(String.format(Locale.US, "%.0f", item.runningBalance), tableLeft + (colBalanceWidth / 2f), y + 21f, boldPaint)
+
+                y += rowHeight
+            }
+
+            y += 10f
+
+            // ملخص كشف الحساب
+            val rBal = android.graphics.RectF(pad, y, width - pad, y + 36f)
+            canvas.drawRoundRect(rBal, 10f, 10f, boxPaint)
+            val netL = if (docWithEntries.netBalance >= 0) "عليه (مدين)" else "له (دائن)"
+            boldPaint.textSize = if (is80mm) 17f else 14f
+            canvas.drawText("صافي الرصيد: ${String.format(Locale.US, "%.2f", Math.abs(docWithEntries.netBalance))} ريال ($netL)", rBal.centerX(), rBal.centerY() + 5f, boldPaint)
+
+            y += 44f
+        }
+
+        // 6. التذييل
+        boldPaint.textSize = if (is80mm) 18f else 15f
+        canvas.drawText("شكراً لاختياركم ${doc.storeName.ifEmpty { "بقالة العزي" }}", width / 2f, y, boldPaint)
+        y += 24f
+
+        regularPaint.textSize = if (is80mm) 14f else 11.5f
+        regularPaint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
+        canvas.drawText("برنامج دفتر الفواتير والحسابات  •  صفحة 1 من 1", width / 2f, y, regularPaint)
+        y += 24f
+
+        // اقتصاص الارتفاع الحقيقي بدقة تامة
+        val actualHeight = y.toInt().coerceAtLeast(150)
         return Bitmap.createBitmap(bitmap, 0, 0, width, actualHeight.coerceAtMost(bitmap.height))
+    }
+
+    /**
+     * تحويل الأرقام إلى نصوص باللغة العربية (تفقيط)
+     */
+    fun tafqeetArabic(amount: Double): String {
+        val n = amount.toLong()
+        if (n == 0L) return "صفر ريال"
+        if (n < 0) return "سالب " + tafqeetArabic(Math.abs(amount))
+
+        val ones = arrayOf("", "واحد", "اثنان", "ثلاثة", "أربعة", "خمسة", "ستة", "سبعة", "ثمانية", "تسعة", "عشرة",
+            "أحد عشر", "اثنا عشر", "ثلاثة عشر", "أربعة عشر", "خمسة عشر", "ستة عشر", "سبعة عشر", "ثمانية عشر", "تسعة عشر")
+        val tens = arrayOf("", "", "عشرون", "ثلاثون", "أربعون", "خمسون", "ستون", "سبعون", "ثمانون", "تسعون")
+        val hundreds = arrayOf("", "مائة", "مائتان", "ثلاثمائة", "أربعمائة", "خمسمائة", "ستمائة", "سبعمائة", "ثمانمائة", "تسعمائة")
+
+        fun convertUnder1000(num: Long): String {
+            if (num == 0L) return ""
+            val h = (num / 100).toInt()
+            val rem = (num % 100).toInt()
+            val sb = StringBuilder()
+            if (h > 0) {
+                sb.append(hundreds[h])
+            }
+            if (rem > 0) {
+                if (sb.isNotEmpty()) sb.append(" و")
+                if (rem < 20) {
+                    sb.append(ones[rem])
+                } else {
+                    val o = rem % 10
+                    val t = rem / 10
+                    if (o > 0) {
+                        sb.append(ones[o]).append(" و").append(tens[t])
+                    } else {
+                        sb.append(tens[t])
+                    }
+                }
+            }
+            return sb.toString()
+        }
+
+        val billions = n / 1_000_000_000L
+        val millions = (n % 1_000_000_000L) / 1_000_000L
+        val thousands = (n % 1_000_000L) / 1_000L
+        val remainder = n % 1_000L
+
+        val parts = mutableListOf<String>()
+        if (billions > 0) parts.add("${convertUnder1000(billions)} مليار")
+        if (millions > 0) parts.add("${convertUnder1000(millions)} مليون")
+        if (thousands > 0) {
+            val tText = when (thousands) {
+                1L -> "ألف"
+                2L -> "ألفان"
+                in 3..10 -> "${ones[thousands.toInt()]} آلاف"
+                else -> "${convertUnder1000(thousands)} ألف"
+            }
+            parts.add(tText)
+        }
+        if (remainder > 0) parts.add(convertUnder1000(remainder))
+
+        return parts.joinToString(" و ") + " ريال يمني"
+    }
+
+    /**
+     * مشاركة صورة الإيصال كملف صورة حقيقي (PNG)
+     */
+    fun shareReceiptImage(context: Context, bitmap: Bitmap) {
+        try {
+            val cachePath = java.io.File(context.cacheDir, "images")
+            cachePath.mkdirs()
+            val file = java.io.File(cachePath, "receipt_${System.currentTimeMillis()}.png")
+            val stream = java.io.FileOutputStream(file)
+            bitmap.compress(Bitmap.CompressFormat.PNG, 100, stream)
+            stream.close()
+
+            val contentUri = androidx.core.content.FileProvider.getUriForFile(
+                context,
+                "${context.packageName}.fileprovider",
+                file
+            )
+
+            val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                type = "image/png"
+                putExtra(Intent.EXTRA_STREAM, contentUri)
+                putExtra(Intent.EXTRA_TEXT, "📄 إيصال فاتورة مطبوعة من بقالة العزي")
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            context.startActivity(Intent.createChooser(shareIntent, "مشاركة صورة الإيصال عبر"))
+        } catch (e: Exception) {
+            android.widget.Toast.makeText(context, "حدث خطأ أثناء تصدير الصورة: ${e.message}", android.widget.Toast.LENGTH_SHORT).show()
+        }
     }
 
     /**
