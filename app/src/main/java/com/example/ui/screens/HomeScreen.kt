@@ -26,6 +26,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.Assessment
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Description
@@ -230,6 +231,18 @@ fun HomeScreen(
                             imageVector = Icons.Default.AutoAwesome,
                             contentDescription = "المساعد الذكي",
                             tint = Color(0xFFFDE047)
+                        )
+                    }
+
+                    // زر التقارير والحركات — الأحدث أولاً
+                    IconButton(
+                        onClick = { viewModel.navigateTo(CurrentScreen.Reports) },
+                        modifier = Modifier.testTag("reports_button")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Assessment,
+                            contentDescription = "التقارير",
+                            tint = Color.White
                         )
                     }
 
