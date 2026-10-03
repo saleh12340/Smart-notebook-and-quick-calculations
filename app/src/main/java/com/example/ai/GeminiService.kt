@@ -226,6 +226,48 @@ class GeminiService(private val context: Context) {
     }
 
     /**
+     * Interpret an accounting command as JSON. Database writes are performed only by ViewModel
+     * after the user explicitly enables AI write delegation.
+     */
+    suspend fun interpretAccountingCommand(prompt: String, model: String = "gemini-3.5-flash"): Result<JSONObject> = withContext(Dispatchers.IO) {
+        val apiKey = getApiKey()
+        if (apiKey.isEmpty() || apiKey == "MY_GEMINI_API_KEY") return@withContext Result.success(localCommandParser(prompt))
+        try {
+            val system = "أنت محرك أوامر محاسبية لتطبيق أندرويد عربي. أعد JSON فقط بدون Markdown. العمليات: create_invoice {action,customer,paymentType:CASH|CREDIT,items:[{description,quantity,unitPrice,totalAmount}]}; create_account {action,customer,openingBalance}; add_account_entry {action,customer,description,debit,credit}; create_note {action,title,text}; repair_data {action}; unknown {action,message}. لا تخترع أرقاماً غير موجودة في طلب المستخدم."
+            val root = JSONObject()
+                .put("systemInstruction", JSONObject().put("parts", JSONArray().put(JSONObject().put("text", system))))
+                .put("contents", JSONArray().put(JSONObject().put("role", "user").put("parts", JSONArray().put(JSONObject().put("text", prompt)))))
+            val url = "https://generativelanguage.googleapis.com/v1beta/models/$model:generateContent?key=$apiKey"
+            val response = client.newCall(Request.Builder().url(url).post(root.toString().toRequestBody(jsonMediaType)).build()).execute()
+            val body = response.body?.string().orEmpty()
+            if (!response.isSuccessful) return@withContext Result.failure(Exception("تعذر تنفيذ الأمر الذكي: HTTP " + response.code))
+            val text = JSONObject(body).optJSONArray("candidates")?.optJSONObject(0)?.optJSONObject("content")?.optJSONArray("parts")?.optJSONObject(0)?.optString("text").orEmpty().trim().removePrefix("```json").removePrefix("```").removeSuffix("```").trim()
+            Result.success(JSONObject(text))
+        } catch (e: Exception) { Result.failure(e) }
+    }
+
+    private fun localCommandParser(prompt: String): JSONObject {
+        val p = prompt.trim()
+        val lower = p.lowercase(Locale("ar"))
+        val customerRegex = Regex("(?:للعميل|حساب|العميل)\\s*[:：]?\\s*([^،,:؛\\n]+)", RegexOption.IGNORE_CASE)
+        val customer = customerRegex.find(p)?.groupValues?.getOrNull(1)?.trim().orEmpty()
+        return when {
+            lower.contains("أنشئ حساب") || lower.contains("انشئ حساب") || lower.contains("ابدأ حساب") -> {
+                val amount = Regex("(?<!\\d)(\\d+(?:[.,]\\d+)?)").find(p)?.value?.replace(",", "")?.toDoubleOrNull() ?: 0.0
+                JSONObject().put("action","create_account").put("customer",customer).put("openingBalance",amount)
+            }
+            lower.contains("أنشئ فاتورة") || lower.contains("انشئ فاتورة") || lower.contains("فاتورة بيع") -> {
+                val nums = Regex("(?<!\\d)(\\d+(?:[.,]\\d+)?)").findAll(p).map { it.value.replace(",", "").toDoubleOrNull() ?: 0.0 }.toList()
+                val quantity = nums.getOrNull(0) ?: 1.0
+                val price = nums.getOrNull(1) ?: 0.0
+                val item = p.substringAfter("الصنف", "").substringAfter("صنف", "").substringBefore("الكمية").trim()
+                JSONObject().put("action","create_invoice").put("customer",customer).put("paymentType",if (lower.contains("آجل") || lower.contains("اجل")) "CREDIT" else "CASH").put("items",JSONArray().put(JSONObject().put("description",if (item.isBlank()) "صنف" else item).put("quantity",quantity).put("unitPrice",price).put("totalAmount",quantity*price)))
+            }
+            lower.contains("اصلح") || lower.contains("إصلاح") || lower.contains("دقق") -> JSONObject().put("action","repair_data")
+            else -> JSONObject().put("action","unknown").put("message","لم أفهم أمراً تنفيذياً واضحاً. استخدم: أنشئ فاتورة، أنشئ حساب، أضف حركة، أصلح الحسابات.")
+        }
+    }
+    /**
      * Image Generation using gemini-3-pro-image-preview
      * Fallback to local high-resolution merchant stamp if no API key is provided
      */
