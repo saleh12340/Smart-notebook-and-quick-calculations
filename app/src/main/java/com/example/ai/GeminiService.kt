@@ -238,7 +238,7 @@ class GeminiService(private val context: Context) {
                 .put("systemInstruction", JSONObject().put("parts", JSONArray().put(JSONObject().put("text", system))))
                 .put("contents", JSONArray().put(JSONObject().put("role", "user").put("parts", JSONArray().put(JSONObject().put("text", prompt)))))
             val url = "https://generativelanguage.googleapis.com/v1beta/models/$model:generateContent"
-            val response = client.newCall(Request.Builder().url(url).addHeader("x-goog-api-key", apiKey).post(root.toString().toRequestBody(jsonMediaType).build())).execute()
+            val response = client.newCall(Request.Builder().url(url).addHeader("x-goog-api-key", apiKey).post(root.toString().toRequestBody(jsonMediaType)).build()).execute()
             val body = response.body?.string().orEmpty()
             if (!response.isSuccessful) return@withContext Result.failure(Exception("تعذر تنفيذ الأمر الذكي: HTTP " + response.code))
             val text = JSONObject(body).optJSONArray("candidates")?.optJSONObject(0)?.optJSONObject("content")?.optJSONArray("parts")?.optJSONObject(0)?.optString("text").orEmpty().trim().removePrefix("```json").removePrefix("```").removeSuffix("```").trim()
