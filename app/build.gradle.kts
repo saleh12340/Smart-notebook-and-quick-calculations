@@ -45,7 +45,13 @@ android {
       proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
       signingConfig = signingConfigs.getByName("release")
     }
-    debug { signingConfig = signingConfigs.getByName("debugConfig") }
+    debug {
+      // Keep the CI/debug APK small while preserving the same debug signing configuration.
+      isMinifyEnabled = true
+      isShrinkResources = true
+      proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+      signingConfig = signingConfigs.getByName("debugConfig")
+    }
   }
   compileOptions {
     sourceCompatibility = JavaVersion.VERSION_11
