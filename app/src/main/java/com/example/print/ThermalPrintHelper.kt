@@ -6,7 +6,6 @@ import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothSocket
 import android.content.Context
 import android.content.Intent
-import android.net.Uri
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
@@ -20,7 +19,6 @@ import android.webkit.WebViewClient
 import com.example.data.model.DocumentType
 import com.example.data.model.DocumentWithEntries
 import com.example.data.model.PaymentType
-import com.example.data.storage.AppStorageHelper
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.ByteArrayOutputStream
@@ -72,14 +70,7 @@ object ThermalPrintHelper {
 
             // 3. تحويل الصورة إلى أوامر نقطية ESC/POS (GS v 0)
             val escPosBytes = bitmapToEscPosRaster(bitmap)
-            // إرسال الصورة على دفعات صغيرة لتجنب امتلاء مخزن بعض طابعات 58/80mm.
-            var offset = 0
-            while (offset < escPosBytes.size) {
-                val end = minOf(offset + 4096, escPosBytes.size)
-                outputStream.write(escPosBytes, offset, end - offset)
-                outputStream.flush()
-                offset = end
-            }
+            outputStream.write(escPosBytes)
 
             // 4. تغذية الورق 4 أسطر وقطع الورق
             outputStream.write(byteArrayOf(0x1B, 0x64, 0x04)) // تغذية 4 أسطر
@@ -109,7 +100,7 @@ object ThermalPrintHelper {
         val pad = 12f
 
         // تقدير الارتفاع بناء على عدد الأصناف
-        val estimatedHeight = 420 + (entries.size * 34) + 180
+        val estimatedHeight = 550 + (entries.size * 42) + 300
         val bitmap = Bitmap.createBitmap(width, estimatedHeight, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bitmap)
         canvas.drawColor(Color.WHITE)
@@ -215,7 +206,7 @@ object ThermalPrintHelper {
         val tableLeft = pad
         val tableRight = width - pad
         val tableTop = y
-        val rowHeight = 28f
+        val rowHeight = 32f
 
         if (doc.docType == DocumentType.SALES_INVOICE) {
             // توزيع أعمدة الجدول: م (أقصى اليمين) | المادة | الكمية | السعر | الإجمالي (أقصى اليسار)
@@ -477,22 +468,6 @@ object ThermalPrintHelper {
         } catch (e: Exception) {
             android.widget.Toast.makeText(context, "حدث خطأ أثناء تصدير الصورة: ${e.message}", android.widget.Toast.LENGTH_SHORT).show()
         }
-    }
-
-    /**
-     * حفظ نفس صورة المعاينة/الطباعة داخل Downloads/دفتر الفواتير والحسابات/الصور.
-     */
-    fun saveReceiptImageToDownloads(context: Context, bitmap: Bitmap): Uri? {
-        val fileName = "receipt_${System.currentTimeMillis()}.png"
-        val stream = ByteArrayOutputStream()
-        bitmap.compress(Bitmap.CompressFormat.PNG, 100, stream)
-        return AppStorageHelper.saveBytesToDownloads(
-            context = context,
-            bytes = stream.toByteArray(),
-            fileName = fileName,
-            mimeType = "image/png",
-            subFolder = AppStorageHelper.IMAGES_FOLDER
-        )
     }
 
     /**

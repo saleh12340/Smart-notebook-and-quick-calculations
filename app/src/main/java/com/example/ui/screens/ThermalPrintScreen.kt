@@ -28,7 +28,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Bluetooth
 import androidx.compose.material.icons.filled.BluetoothConnected
-import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Print
 import androidx.compose.material.icons.filled.Share
@@ -280,26 +279,6 @@ fun ThermalPrintScreen(
             }
 
             Spacer(modifier = Modifier.height(12.dp))
-
-            Button(
-                onClick = {
-                    val uri = ThermalPrintHelper.saveReceiptImageToDownloads(context, receiptBitmap)
-                    Toast.makeText(
-                        context,
-                        if (uri != null) "تم حفظ نفس صورة الإيصال في Downloads/دفتر الفواتير والحسابات/الصور" else "تعذر حفظ صورة الإيصال",
-                        Toast.LENGTH_LONG
-                    ).show()
-                },
-                modifier = Modifier.fillMaxWidth(),
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF475569)),
-                shape = RoundedCornerShape(8.dp)
-            ) {
-                Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(18.dp))
-                Spacer(modifier = Modifier.width(6.dp))
-                Text("حفظ نفس صورة الإيصال", fontWeight = FontWeight.Bold, fontSize = 12.sp)
-            }
-
-            Spacer(modifier = Modifier.height(6.dp))
 
             Button(
                 onClick = {

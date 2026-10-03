@@ -2,8 +2,6 @@ package com.example.ui.screens
 
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -29,7 +27,6 @@ import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.EditNote
 import androidx.compose.material.icons.filled.Print
 import androidx.compose.material.icons.filled.VolumeUp
-import androidx.compose.material.icons.filled.Image
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -61,7 +58,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import coil.compose.AsyncImage
 import com.example.ui.components.CustomerInputLine
 import com.example.ui.components.LedgerBorderColor
 import com.example.ui.components.LinedPaperSheet
@@ -70,7 +66,6 @@ import com.example.ui.components.PaperHeaderBackground
 import com.example.ui.components.PaperLineColor
 import com.example.ui.components.PaperRedMargin
 import com.example.ui.components.StampRed
-import com.example.data.storage.AppStorageHelper
 import com.example.ui.viewmodel.CurrentScreen
 import com.example.ui.viewmodel.DaftarViewModel
 
@@ -84,22 +79,6 @@ fun LinedNoteScreen(
     val context = LocalContext.current
     val activeDoc by viewModel.activeDocument.collectAsState()
     val isSpeaking by viewModel.isSpeaking.collectAsState()
-    val imagePicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
-        if (uri != null) {
-            val copied = AppStorageHelper.copyUriToDownloads(
-                context = context,
-                sourceUri = uri,
-                fileName = "note_image_${System.currentTimeMillis()}.jpg",
-                mimeType = "image/jpeg"
-            )
-            if (copied != null) {
-                viewModel.updateDocumentHeader(activeDoc.copy(stampImageUrl = copied.toString()))
-                Toast.makeText(context, "تم استيراد الصورة وحفظ نسخة منها داخل مجلد التطبيق في Downloads", Toast.LENGTH_LONG).show()
-            } else {
-                Toast.makeText(context, "تعذر استيراد الصورة", Toast.LENGTH_SHORT).show()
-            }
-        }
-    }
 
     BackHandler {
         viewModel.navigateBack()
@@ -145,17 +124,6 @@ fun LinedNoteScreen(
                     }
                 },
                 actions = {
-                    // استيراد صورة
-                    IconButton(
-                        onClick = { imagePicker.launch("image/*") }
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Image,
-                            contentDescription = "استيراد صورة",
-                            tint = Color.White
-                        )
-                    }
-
                     // قراءة صوتية
                     IconButton(
                         onClick = {
@@ -323,19 +291,7 @@ fun LinedNoteScreen(
                         }
                     }
 
-                    if (!activeDoc.stampImageUrl.isNullOrBlank()) {
-                        AsyncImage(
-                            model = activeDoc.stampImageUrl,
-                            contentDescription = "الصورة المستوردة",
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(180.dp)
-                                .border(1.dp, LedgerBorderColor, RoundedCornerShape(6.dp))
-                                .clip(RoundedCornerShape(6.dp)),
-                            contentScale = androidx.compose.ui.layout.ContentScale.Fit
-                        )
-                        Spacer(modifier = Modifier.height(6.dp))
-                    }
+                    Spacer(modifier = Modifier.height(6.dp))
 
                     // 2. سطر اسم العميل أو الشخص المعني بالملاحظة (المطلوب من الأخ / المحترم)
                     CustomerInputLine(

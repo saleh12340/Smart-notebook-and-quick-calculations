@@ -5,7 +5,6 @@ import android.content.Intent
 import android.net.Uri
 import androidx.core.content.FileProvider
 import com.example.data.db.DaftarDao
-import com.example.data.storage.AppStorageHelper
 import com.example.data.model.DocumentEntity
 import com.example.data.model.DocumentEntryEntity
 import com.example.data.model.DocumentType
@@ -46,7 +45,6 @@ object BackupHelper {
     private fun updateLastBackupTime(context: Context) {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         prefs.edit().putLong(KEY_LAST_BACKUP_TIME, System.currentTimeMillis()).apply()
-        AppStorageHelper.ensureFolders(context)
     }
 
     /**
@@ -120,14 +118,6 @@ object BackupHelper {
             if (!dir.exists()) dir.mkdirs()
             val backupFile = File(dir, "auto_backup_latest.json")
             backupFile.writeText(json)
-
-            AppStorageHelper.saveBytesToDownloads(
-                context = context,
-                bytes = json.toByteArray(Charsets.UTF_8),
-                fileName = "auto_backup_latest.json",
-                mimeType = "application/json",
-                subFolder = AppStorageHelper.BACKUPS_FOLDER
-            )
             updateLastBackupTime(context)
         } catch (ignored: Exception) {}
     }
@@ -137,26 +127,25 @@ object BackupHelper {
      */
     suspend fun exportManualBackup(context: Context, dao: DaftarDao, storeName: String) = withContext(Dispatchers.IO) {
         val json = createBackupJson(dao, storeName)
+        val dir = File(context.cacheDir, "backups")
+        if (!dir.exists()) dir.mkdirs()
+
         val timeStr = SimpleDateFormat("yyyyMMdd_HHmm", Locale.US).format(Date())
         val fileName = "Daftar_Backup_$timeStr.json"
-        val publicUri = AppStorageHelper.saveBytesToDownloads(
-            context = context,
-            bytes = json.toByteArray(Charsets.UTF_8),
-            fileName = fileName,
-            mimeType = "application/json",
-            subFolder = AppStorageHelper.BACKUPS_FOLDER
-        ) ?: return@withContext
+        val file = File(dir, fileName)
+        file.writeText(json)
         updateLastBackupTime(context)
 
         withContext(Dispatchers.Main) {
+            val uri: Uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
             val intent = Intent(Intent.ACTION_SEND).apply {
                 type = "application/json"
-                putExtra(Intent.EXTRA_STREAM, publicUri)
+                putExtra(Intent.EXTRA_STREAM, uri)
                 putExtra(Intent.EXTRA_SUBJECT, "نسخة احتياطية - $storeName")
-                putExtra(Intent.EXTRA_TEXT, "نسخة احتياطية محفوظة في مجلد التطبيق داخل Downloads بتاريخ: $timeStr")
+                putExtra(Intent.EXTRA_TEXT, "نسخة احتياطية لقاعدة بيانات دفتر الفواتير والحسابات ($storeName) بتاريخ: $timeStr")
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             }
-            val chooser = Intent.createChooser(intent, "مشاركة النسخة الاحتياطية")
+            val chooser = Intent.createChooser(intent, "حفظ أو إرسال النسخة الاحتياطية عبر")
             chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             context.startActivity(chooser)
         }

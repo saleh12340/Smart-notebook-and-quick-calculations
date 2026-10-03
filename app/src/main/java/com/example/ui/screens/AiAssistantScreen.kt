@@ -37,13 +37,18 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.FilterDrama
 import androidx.compose.material.icons.filled.Image
+import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Psychology
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material.icons.filled.VolumeUp
 import com.example.ui.viewmodel.CurrentScreen
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -63,6 +68,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
@@ -72,6 +78,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -81,10 +88,13 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.ai.ChatMessage
 import com.example.ui.viewmodel.DaftarViewModel
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -93,7 +103,14 @@ fun AiAssistantScreen(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     var selectedTab by remember { mutableIntStateOf(0) } // 0: Chat, 1: Image Gen
+
+    var showApiKeyDialog by remember { mutableStateOf(false) }
+    var apiKeyInput by remember { mutableStateOf(viewModel.geminiService.getApiKey()) }
+    var isKeyVisible by remember { mutableStateOf(false) }
+    var isTestingKey by remember { mutableStateOf(false) }
+    var isKeyConfigured by remember { mutableStateOf(viewModel.geminiService.isApiKeyConfigured()) }
 
     BackHandler {
         viewModel.navigateBack()
@@ -114,9 +131,9 @@ fun AiAssistantScreen(
                                 color = Color.White
                             )
                             Text(
-                                text = "تدقيق محاسبي وتوليد أختام وقراءة صوتية",
-                                fontSize = 11.sp,
-                                color = Color.White.copy(alpha = 0.8f)
+                                text = if (isKeyConfigured) "المفتاح مثبت وجاهز للعمل" else "المحرك المحلي مفعّل (اضغط 🔑 لإدخال المفتاح)",
+                                fontSize = 10.sp,
+                                color = if (isKeyConfigured) Color(0xFF4ADE80) else Color.White.copy(alpha = 0.8f)
                             )
                         }
                     }
@@ -131,6 +148,20 @@ fun AiAssistantScreen(
                     }
                 },
                 actions = {
+                    // زر تثبيت وضبط مفتاح API
+                    IconButton(
+                        onClick = {
+                            apiKeyInput = viewModel.geminiService.getApiKey()
+                            showApiKeyDialog = true
+                        }
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Key,
+                            contentDescription = "تثبيت المفتاح",
+                            tint = if (isKeyConfigured) Color(0xFF4ADE80) else Color(0xFFFDE047)
+                        )
+                    }
+
                     IconButton(onClick = { viewModel.navigateTo(CurrentScreen.Settings) }) {
                         Icon(
                             imageVector = Icons.Default.Settings,
@@ -177,6 +208,98 @@ fun AiAssistantScreen(
                 1 -> ImageGenTabContent(viewModel = viewModel)
             }
         }
+    }
+
+    if (showApiKeyDialog) {
+        AlertDialog(
+            onDismissRequest = { showApiKeyDialog = false },
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Key, contentDescription = null, tint = Color(0xFFD97706))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("تثبيت مفتاح Gemini API", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                }
+            },
+            text = {
+                Column {
+                    Text(
+                        text = "ألصق مفتاح الذكاء الاصطناعي (API Key) من Google AI Studio ليتم حفظه وتثبيته في جهازك:",
+                        fontSize = 12.sp,
+                        color = Color.DarkGray
+                    )
+                    Spacer(modifier = Modifier.height(10.dp))
+                    OutlinedTextField(
+                        value = apiKeyInput,
+                        onValueChange = { apiKeyInput = it },
+                        label = { Text("GEMINI_API_KEY") },
+                        placeholder = { Text("AIzaSy...") },
+                        modifier = Modifier.fillMaxWidth().testTag("gemini_api_key_dialog_input"),
+                        singleLine = true,
+                        visualTransformation = if (isKeyVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                        trailingIcon = {
+                            IconButton(onClick = { isKeyVisible = !isKeyVisible }) {
+                                Icon(
+                                    imageVector = if (isKeyVisible) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                                    contentDescription = null,
+                                    tint = Color.Gray
+                                )
+                            }
+                        }
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = if (isKeyConfigured) "✅ المفتاح محفوظ ومثبت حالياً ويعمل بكفاءة." else "ℹ️ إذا لم يتوفر مفتاح، سيعمل المحرك المحاسبي المحلي.",
+                        fontSize = 11.sp,
+                        color = if (isKeyConfigured) Color(0xFF16A34A) else Color.Gray,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        viewModel.geminiService.saveCustomApiKey(apiKeyInput.trim())
+                        isKeyConfigured = viewModel.geminiService.isApiKeyConfigured()
+                        showApiKeyDialog = false
+                        Toast.makeText(context, "تم تثبيت وحفظ مفتاح الذكاء الاصطناعي بنجاح", Toast.LENGTH_SHORT).show()
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1E3A8A))
+                ) {
+                    Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("حفظ وتثبيت")
+                }
+            },
+            dismissButton = {
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    OutlinedButton(
+                        onClick = {
+                            isTestingKey = true
+                            scope.launch {
+                                val testResult = viewModel.geminiService.testApiKey(apiKeyInput.trim())
+                                isTestingKey = false
+                                testResult.onSuccess { msg ->
+                                    viewModel.geminiService.saveCustomApiKey(apiKeyInput.trim())
+                                    isKeyConfigured = viewModel.geminiService.isApiKeyConfigured()
+                                    Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
+                                }.onFailure { err ->
+                                    Toast.makeText(context, "فحص المفتاح: ${err.message}", Toast.LENGTH_LONG).show()
+                                }
+                            }
+                        }
+                    ) {
+                        if (isTestingKey) {
+                            CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 2.dp)
+                        } else {
+                            Text("فحص المفتاح", fontSize = 11.sp)
+                        }
+                    }
+                    TextButton(onClick = { showApiKeyDialog = false }) {
+                        Text("إغلاق")
+                    }
+                }
+            }
+        )
     }
 }
 
@@ -259,8 +382,8 @@ fun ChatTabContent(
                 }
                 item {
                     FilterChip(
-                        selected = selectedModel == "gemini-3.1-flash-lite",
-                        onClick = { viewModel.setSelectedAiModel("gemini-3.1-flash-lite") },
+                        selected = selectedModel == "gemini-3.1-flash-lite-preview",
+                        onClick = { viewModel.setSelectedAiModel("gemini-3.1-flash-lite-preview") },
                         label = { Text("3.1 Flash-Lite (سريع)", fontSize = 11.sp) },
                         colors = FilterChipDefaults.filterChipColors(
                             selectedContainerColor = Color(0xFF1E3A8A),

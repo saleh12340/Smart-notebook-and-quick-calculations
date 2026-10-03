@@ -60,6 +60,11 @@ class GeminiService(private val context: Context) {
         }
     }
 
+    /**
+     * جلب مفتاح Gemini API:
+     * 1. من التفضيلات المحفوظة (المفتاح المخصص المثبت من قبل المستخدم)
+     * 2. من BuildConfig إذا كان ممرراً
+     */
     fun getApiKey(): String {
         val prefs = context.getSharedPreferences("app_settings", Context.MODE_PRIVATE)
         val customKey = prefs.getString("gemini_api_key", "")?.trim() ?: ""
@@ -73,25 +78,84 @@ class GeminiService(private val context: Context) {
         return ""
     }
 
+    /**
+     * حفظ وتثبيت مفتاح Gemini API في التفضيلات الدائمة بالجهاز
+     */
     fun saveCustomApiKey(key: String) {
+        val cleanKey = key.trim()
         val prefs = context.getSharedPreferences("app_settings", Context.MODE_PRIVATE)
-        prefs.edit().putString("gemini_api_key", key.trim()).apply()
+        prefs.edit().putString("gemini_api_key", cleanKey).apply()
+    }
+
+    fun isApiKeyConfigured(): Boolean {
+        val key = getApiKey()
+        return key.isNotEmpty() && key != "MY_GEMINI_API_KEY"
+    }
+
+    private fun resolveModelName(model: String): String {
+        return when (model) {
+            "gemini-3.1-flash-lite", "gemini-flash-lite" -> "gemini-3.1-flash-lite-preview"
+            "gemini-3.1-pro", "gemini-pro" -> "gemini-3.1-pro-preview"
+            "gemini-flash" -> "gemini-flash-latest"
+            "gemini-3.5-flash" -> "gemini-3.5-flash"
+            else -> if (model.isBlank()) "gemini-3.5-flash" else model
+        }
     }
 
     /**
-     * إرسال رسالة للمساعد الذكي:
-     * - إذا كان مفتاح Gemini متوفراً: يتصل بنموذج الذكاء الاصطناعي (gemini-3.5-flash أو المختار).
-     * - إذا لم يتوفر المفتاح أو انقطع النت: يوفر المحرك المحاسبي الداخلي إجابة ذكية واحترافية فوراً!
+     * فحص واختبار صحة مفتاح Gemini API
+     */
+    suspend fun testApiKey(apiKeyToTest: String? = null): Result<String> = withContext(Dispatchers.IO) {
+        val key = (apiKeyToTest ?: getApiKey()).trim()
+        if (key.isEmpty() || key == "MY_GEMINI_API_KEY") {
+            return@withContext Result.failure(Exception("لم يتم إدخال مفتاح API. يرجى لصق المفتاح أولاً."))
+        }
+
+        try {
+            val root = JSONObject()
+            val contentsArray = JSONArray()
+            val contentObj = JSONObject()
+            contentObj.put("role", "user")
+            val parts = JSONArray()
+            parts.put(JSONObject().put("text", "مرحبا، تأكيد اتصال سريع."))
+            contentObj.put("parts", parts)
+            contentsArray.put(contentObj)
+            root.put("contents", contentsArray)
+
+            val url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent?key=$key"
+            val body = root.toString().toRequestBody(jsonMediaType)
+            val request = Request.Builder()
+                .url(url)
+                .addHeader("x-goog-api-key", key)
+                .post(body)
+                .build()
+
+            val response = client.newCall(request).execute()
+            val responseBody = response.body?.string() ?: ""
+
+            if (response.isSuccessful) {
+                Result.success("تم التحقق بنجاح! المفتاح صحيح والذكاء الاصطناعي (Gemini) جاهز للعمل.")
+            } else {
+                val errMessage = parseErrorMessage(responseBody, response.code)
+                Result.failure(Exception(errMessage))
+            }
+        } catch (e: Exception) {
+            Result.failure(Exception("خطأ في الاتصال بالإنترنت: ${e.localizedMessage ?: e.message}"))
+        }
+    }
+
+    /**
+     * إرسال رسالة للمساعد الذكي
      */
     suspend fun sendChatMessage(
         messages: List<ChatMessage>,
-        model: String = "gemini-3.8-flash",
-        systemInstruction: String = "أنت خبير محاسبي عربي ومساعد ذكي في تطبيق دفاتر الملاحظات والفواتير لبقالة العزي. تساعد في تنظيم الحسابات ومراجعة الدائن والمدين وحسابات الأصناف والتسعير وصياغة الفواتير بأسلوب مهني وواضح."
+        model: String = "gemini-3.5-flash",
+        systemInstruction: String = "أنت خبير محاسبي عربي ومساعد ذكي في تطبيق دفاتر الملاحظات وفواتير البيع لبقالة العزي. تساعد في تنظيم الحسابات ومراجعة الدائن والمدين وحسابات الأصناف والتسعير وصياغة الفواتير ورسائل المطالبات بأسلوب مهني وواضح ودقيق."
     ): Result<String> = withContext(Dispatchers.IO) {
         val apiKey = getApiKey()
         val lastUserMessage = messages.lastOrNull { it.role == "user" }?.content ?: ""
 
-        // إذا لم يكن هناك مفتاح مدخل، استعمل المحرك المحاسبي الذكي المدمج دون إظهار خطأ
+        // إذا لم يتوفر مفتاح صالح، تقديم إجابة ذكية فورية من المحرك المحاسبي المحلي المدمج
         if (apiKey.isEmpty() || apiKey == "MY_GEMINI_API_KEY") {
             val localResponse = generateSmartAccountingFallback(lastUserMessage)
             return@withContext Result.success(localResponse)
@@ -101,35 +165,38 @@ class GeminiService(private val context: Context) {
             val root = JSONObject()
 
             // System instruction
-            val sysInstObj = JSONObject()
-            val sysParts = JSONArray()
-            sysParts.put(JSONObject().put("text", systemInstruction))
-            sysInstObj.put("parts", sysParts)
-            root.put("systemInstruction", sysInstObj)
-
-            // Contents array (Conversation history)
-            val contentsArray = JSONArray()
-            for (msg in messages) {
-                val contentObj = JSONObject()
-                contentObj.put("role", if (msg.role == "model") "model" else "user")
-                val parts = JSONArray()
-                parts.put(JSONObject().put("text", msg.content))
-                contentObj.put("parts", parts)
-                contentsArray.put(contentObj)
+            if (systemInstruction.isNotBlank()) {
+                val sysInstObj = JSONObject()
+                val sysParts = JSONArray()
+                sysParts.put(JSONObject().put("text", systemInstruction))
+                sysInstObj.put("parts", sysParts)
+                root.put("systemInstruction", sysInstObj)
             }
-            root.put("contents", contentsArray)
 
-            val url = "https://generativelanguage.googleapis.com/v1beta/models/$model:generateContent"
+            // إعداد ومعالجة سجل المحادثة وفق شروط Gemini API
+            val validContents = buildValidContentsArray(messages)
+            if (validContents.length() == 0) {
+                val localResponse = generateSmartAccountingFallback(lastUserMessage)
+                return@withContext Result.success(localResponse)
+            }
+            root.put("contents", validContents)
+
+            val targetModel = resolveModelName(model)
+            val url = "https://generativelanguage.googleapis.com/v1beta/models/$targetModel:generateContent?key=$apiKey"
             val body = root.toString().toRequestBody(jsonMediaType)
-            val request = Request.Builder().url(url).addHeader("x-goog-api-key", apiKey).post(body).build()
+            val request = Request.Builder()
+                .url(url)
+                .addHeader("x-goog-api-key", apiKey)
+                .post(body)
+                .build()
 
             val response = client.newCall(request).execute()
             val responseBody = response.body?.string() ?: ""
 
             if (!response.isSuccessful) {
-                // في حال وجود مشكلة في المفتاح أو الحصة، قدم الرد المحاسبي الذكي مع تنبيه لطيف
+                val errDetails = parseErrorMessage(responseBody, response.code)
                 val fallbackText = generateSmartAccountingFallback(lastUserMessage)
-                val note = "\n\n⚠️ (تنبيه الاتصال: تعذر الربط السحابي، وتم تقديم هذه الإجابة عبر المحرك المحاسبي المحلي. يرجى التأكد من مفتاح Gemini في الإعدادات ⚙️)."
+                val note = "\n\n⚠️ (تنبيه الاتصال: تعذر الربط مع نموذج [$targetModel] - $errDetails. تم تقديم الإجابة عبر المحرك المحاسبي المحلي)."
                 return@withContext Result.success(fallbackText + note)
             }
 
@@ -150,7 +217,80 @@ class GeminiService(private val context: Context) {
         } catch (e: Exception) {
             Log.e(tag, "Chat error, switching to local engine", e)
             val fallback = generateSmartAccountingFallback(lastUserMessage)
-            Result.success(fallback + "\n\nℹ️ (تمت الإجابة عبر المحرك الداخلي بدون إنترنت).")
+            Result.success(fallback + "\n\nℹ️ (تمت الإجابة عبر المحرك الداخلي بدون إنترنت: ${e.localizedMessage ?: e.message}).")
+        }
+    }
+
+    /**
+     * بناء مصفوفة contents متوافقة 100% مع معايير Gemini API:
+     * 1. إزالة الرسائل الفارغة
+     * 2. ضمان أن تكون الرسالة الأولى دائماً من دور 'user'
+     * 3. دمج الأدوار المتكررة المتتالية
+     */
+    private fun buildValidContentsArray(messages: List<ChatMessage>): JSONArray {
+        val contentsArray = JSONArray()
+        val meaningful = messages.filter { it.content.isNotBlank() }
+        if (meaningful.isEmpty()) return contentsArray
+
+        // العثور على أول رسالة user لبدء المحادثة
+        val firstUserIndex = meaningful.indexOfFirst { it.role == "user" }
+        if (firstUserIndex == -1) {
+            // لا يوجد رسائل user، أضف الأخيرة كطلب
+            val last = meaningful.last()
+            val contentObj = JSONObject().put("role", "user")
+            val parts = JSONArray().put(JSONObject().put("text", last.content))
+            contentObj.put("parts", parts)
+            contentsArray.put(contentObj)
+            return contentsArray
+        }
+
+        var currentRole: String? = null
+        var currentText = StringBuilder()
+
+        for (i in firstUserIndex until meaningful.size) {
+            val msg = meaningful[i]
+            val role = if (msg.role == "model") "model" else "user"
+
+            if (currentRole == null) {
+                currentRole = role
+                currentText.append(msg.content)
+            } else if (currentRole == role) {
+                currentText.append("\n").append(msg.content)
+            } else {
+                // حفظ الدور السابق
+                val contentObj = JSONObject().put("role", currentRole)
+                val parts = JSONArray().put(JSONObject().put("text", currentText.toString()))
+                contentObj.put("parts", parts)
+                contentsArray.put(contentObj)
+
+                // بدء دور جديد
+                currentRole = role
+                currentText = StringBuilder(msg.content)
+            }
+        }
+
+        if (currentRole != null && currentText.isNotEmpty()) {
+            val contentObj = JSONObject().put("role", currentRole)
+            val parts = JSONArray().put(JSONObject().put("text", currentText.toString()))
+            contentObj.put("parts", parts)
+            contentsArray.put(contentObj)
+        }
+
+        return contentsArray
+    }
+
+    private fun parseErrorMessage(responseBody: String, statusCode: Int): String {
+        return try {
+            val json = JSONObject(responseBody)
+            val errorObj = json.optJSONObject("error")
+            val message = errorObj?.optString("message")
+            if (!message.isNullOrBlank()) {
+                "HTTP $statusCode: $message"
+            } else {
+                "HTTP $statusCode: خطأ في الخادم"
+            }
+        } catch (e: Exception) {
+            "HTTP $statusCode"
         }
     }
 
@@ -158,7 +298,7 @@ class GeminiService(private val context: Context) {
      * محرك محاسبي ذكي محلي يعمل في كافة الظروف ويقدم إجابات وصيغ احترافية
      */
     private fun generateSmartAccountingFallback(prompt: String): String {
-        val p = prompt.lowercase()
+        val p = prompt.lowercase(Locale("ar"))
         return when {
             p.contains("مطالبة") || p.contains("رسالة") || p.contains("تحصيل") || p.contains("ودية") -> {
                 """
@@ -173,7 +313,7 @@ class GeminiService(private val context: Context) {
                 — إدارة بقالة العزي (هاتف: 776425052)"
                 """.trimIndent()
             }
-            p.contains("مدين") || p.contains("دائن") || p.contains("الفرق") || p.contains("قيد") -> {
+            p.contains("مدين") || p.contains("دائن") || p.contains("الفرق") || p.contains("قيد") || p.contains("عليه") || p.contains("له") -> {
                 """
                 ⚖️ **قاعدة المحاسبة الذهبية في دفتر الحسابات:**
 
@@ -214,30 +354,30 @@ class GeminiService(private val context: Context) {
             }
             else -> {
                 """
-                💡 **المساعد المحاسبي الذكي لبقالة العزي:**
+                💡 **المساعد المحاسبي لبقالة العزي:**
 
                 لقد تم استلام استفسارك: "$prompt".
                 - يسعدني مساعدتك في صياغة الفواتير، تدقيق أرصدة العملاء، مراجعة العمليات الحسابية، وصياغة رسائل المطالبات والمتابعة.
                 
-                📌 *ملاحظة:* لتفعيل التوليد المتقدم عبر خوادم Google الذكية، يمكنك إدخال مفتاح Gemini API الخاص بك من زر **الإعدادات ⚙️** في الشاشة الرئيسية.
+                📌 *ملاحظة:* لتفعيل التوليد المتقدم عبر خوادم Google الذكية، يمكنك إدخال مفتاح Gemini API الخاص بك من زر المفتاح 🔑 في أعلى الشاشة أو من الإعدادات ⚙️.
                 """.trimIndent()
             }
         }
     }
 
     /**
-     * Interpret an accounting command as JSON. Database writes are performed only by ViewModel
-     * after the user explicitly enables AI write delegation.
+     * تفسير أمر محاسبي بالذكاء الاصطناعي
      */
-    suspend fun interpretAccountingCommand(prompt: String, model: String = "gemini-3.8-flash"): Result<JSONObject> = withContext(Dispatchers.IO) {
+    suspend fun interpretAccountingCommand(prompt: String, model: String = "gemini-3.5-flash"): Result<JSONObject> = withContext(Dispatchers.IO) {
         val apiKey = getApiKey()
         if (apiKey.isEmpty() || apiKey == "MY_GEMINI_API_KEY") return@withContext Result.success(localCommandParser(prompt))
         try {
+            val targetModel = resolveModelName(model)
             val system = "أنت محرك أوامر محاسبية لتطبيق أندرويد عربي. أعد JSON فقط بدون Markdown. العمليات: create_invoice {action,customer,paymentType:CASH|CREDIT,items:[{description,quantity,unitPrice,totalAmount}]}; create_account {action,customer,openingBalance}; add_account_entry {action,customer,description,debit,credit}; create_note {action,title,text}; repair_data {action}; unknown {action,message}. لا تخترع أرقاماً غير موجودة في طلب المستخدم."
             val root = JSONObject()
                 .put("systemInstruction", JSONObject().put("parts", JSONArray().put(JSONObject().put("text", system))))
                 .put("contents", JSONArray().put(JSONObject().put("role", "user").put("parts", JSONArray().put(JSONObject().put("text", prompt)))))
-            val url = "https://generativelanguage.googleapis.com/v1beta/models/$model:generateContent"
+            val url = "https://generativelanguage.googleapis.com/v1beta/models/$targetModel:generateContent?key=$apiKey"
             val response = client.newCall(Request.Builder().url(url).addHeader("x-goog-api-key", apiKey).post(root.toString().toRequestBody(jsonMediaType)).build()).execute()
             val body = response.body?.string().orEmpty()
             if (!response.isSuccessful) return@withContext Result.failure(Exception("تعذر تنفيذ الأمر الذكي: HTTP " + response.code))
@@ -267,9 +407,9 @@ class GeminiService(private val context: Context) {
             else -> JSONObject().put("action","unknown").put("message","لم أفهم أمراً تنفيذياً واضحاً. استخدم: أنشئ فاتورة، أنشئ حساب، أضف حركة، أصلح الحسابات.")
         }
     }
+
     /**
-     * Image Generation using gemini-3-pro-image-preview
-     * Fallback to local high-resolution merchant stamp if no API key is provided
+     * Image Generation using gemini-2.5-flash-image
      */
     suspend fun generateImage(
         prompt: String,
@@ -278,7 +418,6 @@ class GeminiService(private val context: Context) {
     ): Result<Bitmap> = withContext(Dispatchers.IO) {
         val apiKey = getApiKey()
         if (apiKey.isEmpty() || apiKey == "MY_GEMINI_API_KEY") {
-            // توليد ختم تجاري احترافي فوري محلياً باسم بقالة العزي
             val localStamp = generateLocalStoreStampBitmap(prompt)
             return@withContext Result.success(localStamp)
         }
@@ -306,7 +445,7 @@ class GeminiService(private val context: Context) {
             root.put("generationConfig", genConfig)
 
             val model = "gemini-2.5-flash-image"
-            val url = "https://generativelanguage.googleapis.com/v1beta/models/$model:generateContent"
+            val url = "https://generativelanguage.googleapis.com/v1beta/models/$model:generateContent?key=$apiKey"
             val body = root.toString().toRequestBody(jsonMediaType)
             val request = Request.Builder().url(url).addHeader("x-goog-api-key", apiKey).post(body).build()
 
@@ -314,7 +453,6 @@ class GeminiService(private val context: Context) {
             val responseBody = response.body?.string() ?: ""
 
             if (!response.isSuccessful) {
-                // الرجوع للختم المحلي عند أي خطأ في الحساب أو الحصة
                 val localStamp = generateLocalStoreStampBitmap(prompt)
                 return@withContext Result.success(localStamp)
             }

@@ -386,8 +386,8 @@ fun SettingsScreen(
                     ) {
                         Button(
                             onClick = {
-                                viewModel.geminiService.saveCustomApiKey(geminiApiKey)
-                                Toast.makeText(context, "تم حفظ مفتاح الذكاء الاصطناعي بنجاح", Toast.LENGTH_SHORT).show()
+                                viewModel.geminiService.saveCustomApiKey(geminiApiKey.trim())
+                                Toast.makeText(context, "تم حفظ وتثبيت مفتاح الذكاء الاصطناعي بنجاح", Toast.LENGTH_SHORT).show()
                             },
                             modifier = Modifier.weight(1f),
                             colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD97706)),
@@ -395,21 +395,20 @@ fun SettingsScreen(
                         ) {
                             Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(18.dp))
                             Spacer(modifier = Modifier.width(4.dp))
-                            Text("حفظ المفتاح", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                            Text("حفظ وتثبيت المفتاح", fontWeight = FontWeight.Bold, fontSize = 12.sp)
                         }
 
                         OutlinedButton(
                             onClick = {
                                 isTestingAi = true
                                 scope.launch {
-                                    val testResult = viewModel.geminiService.sendChatMessage(
-                                        messages = listOf(com.example.ai.ChatMessage(role = "user", content = "مرحبا فحص الاتصال"))
-                                    )
+                                    val testResult = viewModel.geminiService.testApiKey(geminiApiKey.trim())
                                     isTestingAi = false
-                                    testResult.onSuccess {
-                                        Toast.makeText(context, "تم الاتصال بنجاح! الذكاء الاصطناعي يعمل بكفاءة.", Toast.LENGTH_LONG).show()
+                                    testResult.onSuccess { msg ->
+                                        viewModel.geminiService.saveCustomApiKey(geminiApiKey.trim())
+                                        Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
                                     }.onFailure { err ->
-                                        Toast.makeText(context, "تنبيه: ${err.message}", Toast.LENGTH_LONG).show()
+                                        Toast.makeText(context, "فحص المفتاح: ${err.message}", Toast.LENGTH_LONG).show()
                                     }
                                 }
                             },
@@ -421,7 +420,7 @@ fun SettingsScreen(
                             } else {
                                 Icon(Icons.Default.Key, contentDescription = null, modifier = Modifier.size(16.dp))
                                 Spacer(modifier = Modifier.width(4.dp))
-                                Text("فحص الاتصال", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                Text("فحص واختبار الاتصال", fontSize = 12.sp, fontWeight = FontWeight.Bold)
                             }
                         }
                     }

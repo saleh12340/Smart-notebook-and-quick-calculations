@@ -16,10 +16,10 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Set up JDK 17
+      - name: Set up JDK 21
         uses: actions/setup-java@v4
         with:
-          java-version: '17'
+          java-version: '21'
           distribution: 'temurin'
           cache: 'gradle'
 
@@ -50,23 +50,13 @@ jobs:
               -dname "CN=Android Debug,O=Android,C=US"
           fi
 
-          if [ -n "${{ secrets.GEMINI_API_KEY }}" ]; then
-            printf 'GEMINI_API_KEY=%s\n' "${{ secrets.GEMINI_API_KEY }}" > .env
-          elif [ ! -f .env ] && [ -f .env.example ]; then
+          if [ ! -f .env ] && [ -f .env.example ]; then
             cp .env.example .env
           elif [ ! -f .env ]; then
             touch .env
           fi
 
           ls -lh debug.keystore .env
-
-      - name: Verify Gemini API secret is available
-        if: github.event_name != 'pull_request'
-        env:
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-        run: |
-          if [ -z "$GEMINI_API_KEY" ]; then echo "::error::GEMINI_API_KEY is missing from GitHub Secrets"; exit 1; fi
-          echo "GEMINI_API_KEY is configured (value hidden)."
 
       - name: Run Unit Tests
         run: ./gradlew testDebugUnitTest --no-daemon --stacktrace
