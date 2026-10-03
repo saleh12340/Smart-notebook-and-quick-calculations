@@ -85,7 +85,7 @@ class GeminiService(private val context: Context) {
      */
     suspend fun sendChatMessage(
         messages: List<ChatMessage>,
-        model: String = "gemini-3.5-flash",
+        model: String = "gemini-3.8-flash",
         systemInstruction: String = "أنت خبير محاسبي عربي ومساعد ذكي في تطبيق دفاتر الملاحظات والفواتير لبقالة العزي. تساعد في تنظيم الحسابات ومراجعة الدائن والمدين وحسابات الأصناف والتسعير وصياغة الفواتير بأسلوب مهني وواضح."
     ): Result<String> = withContext(Dispatchers.IO) {
         val apiKey = getApiKey()
@@ -229,7 +229,7 @@ class GeminiService(private val context: Context) {
      * Interpret an accounting command as JSON. Database writes are performed only by ViewModel
      * after the user explicitly enables AI write delegation.
      */
-    suspend fun interpretAccountingCommand(prompt: String, model: String = "gemini-3.5-flash"): Result<JSONObject> = withContext(Dispatchers.IO) {
+    suspend fun interpretAccountingCommand(prompt: String, model: String = "gemini-3.8-flash"): Result<JSONObject> = withContext(Dispatchers.IO) {
         val apiKey = getApiKey()
         if (apiKey.isEmpty() || apiKey == "MY_GEMINI_API_KEY") return@withContext Result.success(localCommandParser(prompt))
         try {
@@ -305,7 +305,7 @@ class GeminiService(private val context: Context) {
             genConfig.put("imageConfig", imgConfig)
             root.put("generationConfig", genConfig)
 
-            val model = "gemini-3-pro-image-preview"
+            val model = "gemini-2.5-flash-image"
             val url = "https://generativelanguage.googleapis.com/v1beta/models/$model:generateContent?key=$apiKey"
             val body = root.toString().toRequestBody(jsonMediaType)
             val request = Request.Builder().url(url).post(body).build()
