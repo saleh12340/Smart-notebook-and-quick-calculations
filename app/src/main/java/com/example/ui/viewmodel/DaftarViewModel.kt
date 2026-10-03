@@ -109,20 +109,32 @@ class DaftarViewModel(application: Application) : AndroidViewModel(application) 
                 if (found != null) {
                     _activeDocument.value = found.document
                     val entries = found.entries.toMutableList()
-                    // توفير أسطر فارغة إضافية جاهزة لاستقبال بيانات جديدة فوراً
-                    if (found.document.docType == DocumentType.SALES_INVOICE) {
-                        while (entries.size < 6 || (entries.lastOrNull()?.let { it.description.isNotBlank() || it.totalAmount > 0.0 } == true)) {
-                            entries.add(DocumentEntryEntity(description = "", quantity = 1.0, unitPrice = 0.0, totalAmount = 0.0))
-                            if (entries.size >= 6 && entries.last().description.isBlank() && entries.last().totalAmount == 0.0) break
-                        }
-                    } else if (found.document.docType == DocumentType.CUSTOMER_LEDGER) {
-                        val dateFormat = SimpleDateFormat("yyyy/MM/dd", Locale("ar"))
-                        val dayFormat = SimpleDateFormat("EEEE", Locale("ar"))
-                        val now = Date()
-                        while (entries.size < 6 || (entries.lastOrNull()?.let { it.description.isNotBlank() || it.debit > 0.0 || it.credit > 0.0 } == true)) {
-                            entries.add(DocumentEntryEntity(runningBalance = 0.0, credit = 0.0, debit = 0.0, entryDate = dateFormat.format(now), entryDay = dayFormat.format(now), description = ""))
-                            if (entries.size >= 6 && entries.last().description.isBlank() && entries.last().debit == 0.0 && entries.last().credit == 0.0) break
-                        }
+                    // عند فتح مستند محفوظ: نعرض البيانات الموجودة فقط + سطر إدخال واحد فارغ.
+                    // لا ننشئ 5 أو 6 أسطر فارغة عند البداية.
+                    val dateFormat = SimpleDateFormat("yyyy/MM/dd", Locale("ar"))
+                    val dayFormat = SimpleDateFormat("EEEE", Locale("ar"))
+                    val now = Date()
+                    val hasTrailingEmpty = entries.lastOrNull()?.let {
+                        it.description.isBlank() &&
+                        it.totalAmount == 0.0 &&
+                        it.debit == 0.0 &&
+                        it.credit == 0.0
+                    } == true
+                    if (!hasTrailingEmpty) {
+                        entries.add(
+                            if (found.document.docType == DocumentType.CUSTOMER_LEDGER) {
+                                DocumentEntryEntity(
+                                    runningBalance = 0.0,
+                                    credit = 0.0,
+                                    debit = 0.0,
+                                    entryDate = dateFormat.format(now),
+                                    entryDay = dayFormat.format(now),
+                                    description = ""
+                                )
+                            } else {
+                                DocumentEntryEntity(description = "", quantity = 1.0, unitPrice = 0.0, totalAmount = 0.0)
+                            }
+                        )
                     }
                     _activeEntries.value = if (found.document.docType == DocumentType.CUSTOMER_LEDGER) recalculateLedgerBalances(entries) else entries
                 }
@@ -202,10 +214,10 @@ class DaftarViewModel(application: Application) : AndroidViewModel(application) 
         val dayStr = dayFormat.format(now)
 
         return when (type) {
-            DocumentType.SALES_INVOICE -> List(6) {
+            DocumentType.SALES_INVOICE -> listOf(
                 DocumentEntryEntity(description = "", quantity = 1.0, unitPrice = 0.0, totalAmount = 0.0)
-            }
-            DocumentType.CUSTOMER_LEDGER -> List(6) {
+            )
+            DocumentType.CUSTOMER_LEDGER -> listOf(
                 DocumentEntryEntity(
                     runningBalance = 0.0,
                     credit = 0.0,
@@ -214,7 +226,7 @@ class DaftarViewModel(application: Application) : AndroidViewModel(application) 
                     entryDay = dayStr,
                     description = ""
                 )
-            }
+            )
             DocumentType.LINED_NOTE -> emptyList()
         }
     }
