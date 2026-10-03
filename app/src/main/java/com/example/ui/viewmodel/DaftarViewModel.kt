@@ -93,7 +93,23 @@ class DaftarViewModel(application: Application) : AndroidViewModel(application) 
                 val found = allDocuments.value.find { it.document.id == docId }
                 if (found != null) {
                     _activeDocument.value = found.document
-                    _activeEntries.value = found.entries
+                    val entries = found.entries.toMutableList()
+                    // توفير سطر فارغ إضافي جاهز للكتابة في الأسفل إذا كانت جميع الأسطر السابقة تحتوي على بيانات
+                    if (found.document.docType == DocumentType.SALES_INVOICE) {
+                        val last = entries.lastOrNull()
+                        if (last == null || last.description.isNotBlank() || last.totalAmount > 0.0) {
+                            entries.add(DocumentEntryEntity(description = "", quantity = 1.0, unitPrice = 0.0, totalAmount = 0.0))
+                        }
+                    } else if (found.document.docType == DocumentType.CUSTOMER_LEDGER) {
+                        val last = entries.lastOrNull()
+                        if (last == null || last.description.isNotBlank() || last.debit > 0.0 || last.credit > 0.0) {
+                            val dateFormat = SimpleDateFormat("yyyy/MM/dd", Locale("ar"))
+                            val dayFormat = SimpleDateFormat("EEEE", Locale("ar"))
+                            val now = Date()
+                            entries.add(DocumentEntryEntity(runningBalance = 0.0, credit = 0.0, debit = 0.0, entryDate = dateFormat.format(now), entryDay = dayFormat.format(now), description = ""))
+                        }
+                    }
+                    _activeEntries.value = if (found.document.docType == DocumentType.CUSTOMER_LEDGER) recalculateLedgerBalances(entries) else entries
                 }
             }
         }
@@ -137,8 +153,6 @@ class DaftarViewModel(application: Application) : AndroidViewModel(application) 
 
         return when (type) {
             DocumentType.SALES_INVOICE -> listOf(
-                DocumentEntryEntity(description = "", quantity = 1.0, unitPrice = 0.0, totalAmount = 0.0),
-                DocumentEntryEntity(description = "", quantity = 1.0, unitPrice = 0.0, totalAmount = 0.0),
                 DocumentEntryEntity(description = "", quantity = 1.0, unitPrice = 0.0, totalAmount = 0.0)
             )
             DocumentType.CUSTOMER_LEDGER -> listOf(
@@ -174,6 +188,10 @@ class DaftarViewModel(application: Application) : AndroidViewModel(application) 
                 unitPrice = unitPrice,
                 totalAmount = total
             )
+            // التوسع التلقائي للفاتورة: إذا بدأ المستخدم بالكتابة في السطر الأخير، يضاف سطر فارغ جديد تلقائياً
+            if (index == current.lastIndex && (description.isNotBlank() || total > 0.0)) {
+                current.add(DocumentEntryEntity(description = "", quantity = 1.0, unitPrice = 0.0, totalAmount = 0.0))
+            }
             _activeEntries.value = current
         }
     }
@@ -190,6 +208,10 @@ class DaftarViewModel(application: Application) : AndroidViewModel(application) 
                 unitPrice = unitPrice,
                 totalAmount = totalAmount
             )
+            // التوسع التلقائي للفاتورة: إذا بدأ المستخدم بالكتابة في السطر الأخير، يضاف سطر فارغ جديد تلقائياً
+            if (index == current.lastIndex && (description.isNotBlank() || totalAmount > 0.0)) {
+                current.add(DocumentEntryEntity(description = "", quantity = 1.0, unitPrice = 0.0, totalAmount = 0.0))
+            }
             _activeEntries.value = current
         }
     }
@@ -204,6 +226,17 @@ class DaftarViewModel(application: Application) : AndroidViewModel(application) 
         val current = _activeEntries.value.toMutableList()
         if (index in current.indices) {
             current.removeAt(index)
+            // التأكد من بقاء سطر واحد على الأقل متاحاً للكتابة
+            if (current.isEmpty()) {
+                val now = Date()
+                val dateFormat = SimpleDateFormat("yyyy/MM/dd", Locale("ar"))
+                val dayFormat = SimpleDateFormat("EEEE", Locale("ar"))
+                if (_activeDocument.value.docType == DocumentType.SALES_INVOICE) {
+                    current.add(DocumentEntryEntity(description = "", quantity = 1.0, unitPrice = 0.0, totalAmount = 0.0))
+                } else if (_activeDocument.value.docType == DocumentType.CUSTOMER_LEDGER) {
+                    current.add(DocumentEntryEntity(runningBalance = 0.0, credit = 0.0, debit = 0.0, entryDate = dateFormat.format(now), entryDay = dayFormat.format(now), description = ""))
+                }
+            }
             if (_activeDocument.value.docType == DocumentType.CUSTOMER_LEDGER) {
                 _activeEntries.value = recalculateLedgerBalances(current)
             } else {
@@ -223,6 +256,22 @@ class DaftarViewModel(application: Application) : AndroidViewModel(application) 
                 entryDate = dateStr,
                 entryDay = dayStr
             )
+            // التوسع التلقائي لكشف الحساب: إذا تم إدخال حركة في السطر الأخير، يضاف سطر جديد فوراً
+            if (index == current.lastIndex && (description.isNotBlank() || debit > 0.0 || credit > 0.0)) {
+                val dateFormat = SimpleDateFormat("yyyy/MM/dd", Locale("ar"))
+                val dayFormat = SimpleDateFormat("EEEE", Locale("ar"))
+                val now = Date()
+                current.add(
+                    DocumentEntryEntity(
+                        runningBalance = 0.0,
+                        credit = 0.0,
+                        debit = 0.0,
+                        entryDate = dateFormat.format(now),
+                        entryDay = dayFormat.format(now),
+                        description = ""
+                    )
+                )
+            }
             _activeEntries.value = recalculateLedgerBalances(current)
         }
     }
@@ -257,7 +306,16 @@ class DaftarViewModel(application: Application) : AndroidViewModel(application) 
     fun saveActiveDocument(onSaved: (Long) -> Unit = {}) {
         viewModelScope.launch {
             val doc = _activeDocument.value.copy(updatedAt = System.currentTimeMillis())
-            val savedId = repository.saveDocument(doc, _activeEntries.value)
+            // تنظيف الأسطر الفارغة الزائدة عند الحفظ
+            val entriesToSave = _activeEntries.value.filter { entry ->
+                when (doc.docType) {
+                    DocumentType.SALES_INVOICE -> entry.description.isNotBlank() || entry.totalAmount > 0.0
+                    DocumentType.CUSTOMER_LEDGER -> entry.description.isNotBlank() || entry.debit > 0.0 || entry.credit > 0.0
+                    DocumentType.LINED_NOTE -> true
+                }
+            }.ifEmpty { _activeEntries.value.take(1) }
+
+            val savedId = repository.saveDocument(doc, entriesToSave)
             _activeDocument.value = doc.copy(id = savedId)
             onSaved(savedId)
         }
