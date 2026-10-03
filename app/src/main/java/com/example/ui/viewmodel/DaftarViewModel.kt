@@ -46,6 +46,7 @@ sealed class CurrentScreen {
     data class LinedNote(val docId: Long = 0, val prefilledCustomer: String = "") : CurrentScreen()
     data class ThermalPrint(val docId: Long) : CurrentScreen()
     data object AiAssistant : CurrentScreen()
+    data object Reports : CurrentScreen()
     data object Settings : CurrentScreen()
 }
 
