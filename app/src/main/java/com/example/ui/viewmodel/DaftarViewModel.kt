@@ -115,9 +115,9 @@ class DaftarViewModel(application: Application) : AndroidViewModel(application) 
             customerName = "",
             docType = type,
             paymentType = PaymentType.CASH,
-            storeName = "مركز التجارة العام",
-            storeAddress = "شارع السوق الرئيسي",
-            storePhone = "770000000",
+            storeName = "بقالة العزي",
+            storeAddress = "السوق العام",
+            storePhone = "776425052",
             commercialReg = "45120",
             poBox = "302",
             fax = "",
@@ -173,6 +173,22 @@ class DaftarViewModel(application: Application) : AndroidViewModel(application) 
                 quantity = quantity,
                 unitPrice = unitPrice,
                 totalAmount = total
+            )
+            _activeEntries.value = current
+        }
+    }
+
+    // إتاحة إدخال القيمة الإجمالية مباشرة وحساب سعر الوحدة تلقائياً
+    fun updateInvoiceEntryByTotal(index: Int, description: String, quantity: Double, totalAmount: Double) {
+        val current = _activeEntries.value.toMutableList()
+        if (index in current.indices) {
+            val q = if (quantity <= 0.0) 1.0 else quantity
+            val unitPrice = totalAmount / q
+            current[index] = current[index].copy(
+                description = description,
+                quantity = q,
+                unitPrice = unitPrice,
+                totalAmount = totalAmount
             )
             _activeEntries.value = current
         }

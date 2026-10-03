@@ -27,9 +27,9 @@ data class DocumentEntity(
     val customerName: String = "",     // المطلوب من الأخ / المحترم
     val docType: DocumentType = DocumentType.SALES_INVOICE,
     val paymentType: PaymentType = PaymentType.CASH,
-    val storeName: String = "مؤسسة التجارة والخدمات",
-    val storeAddress: String = "الشارع العام - بجوار السوق",
-    val storePhone: String = "777000000",
+    val storeName: String = "بقالة العزي",
+    val storeAddress: String = "السوق العام",
+    val storePhone: String = "776425052",
     val commercialReg: String = "101000", // س.ت
     val poBox: String = "123",           // ص.ب
     val fax: String = "",                // فاكس

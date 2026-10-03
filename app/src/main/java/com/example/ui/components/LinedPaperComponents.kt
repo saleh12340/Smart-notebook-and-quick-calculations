@@ -280,51 +280,51 @@ fun InvoiceTableHeader(
         // التفاصيل / Description
         Column(
             modifier = Modifier
-                .weight(2.4f)
-                .padding(horizontal = 4.dp),
+                .weight(2.2f)
+                .padding(horizontal = 2.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Text(text = "التفاصـيـل", fontWeight = FontWeight.Bold, fontSize = 11.sp, color = Color.Black)
-            Text(text = "Description", fontSize = 9.sp, color = Color.DarkGray)
+            Text(text = "Description", fontSize = 8.sp, color = Color.DarkGray)
         }
 
-        Box(modifier = Modifier.width(1.dp).height(28.dp).background(LedgerBorderColor))
+        Box(modifier = Modifier.width(1.dp).height(24.dp).background(LedgerBorderColor))
 
         // العدد / Qty
         Column(
             modifier = Modifier
-                .weight(0.9f)
-                .padding(horizontal = 2.dp),
+                .weight(0.8f)
+                .padding(horizontal = 1.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Text(text = "العدد", fontWeight = FontWeight.Bold, fontSize = 11.sp, color = Color.Black)
-            Text(text = "Qty.", fontSize = 9.sp, color = Color.DarkGray)
+            Text(text = "العدد", fontWeight = FontWeight.Bold, fontSize = 10.sp, color = Color.Black)
+            Text(text = "Qty", fontSize = 8.sp, color = Color.DarkGray)
         }
 
-        Box(modifier = Modifier.width(1.dp).height(28.dp).background(LedgerBorderColor))
+        Box(modifier = Modifier.width(1.dp).height(24.dp).background(LedgerBorderColor))
 
         // سعر الوحدة / Unit Price (ريال)
         Column(
             modifier = Modifier
-                .weight(1.3f)
-                .padding(horizontal = 2.dp),
+                .weight(1.2f)
+                .padding(horizontal = 1.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Text(text = "سعر الوحدة", fontWeight = FontWeight.Bold, fontSize = 10.sp, color = Color.Black)
-            Text(text = "Unit Price (ريال)", fontSize = 8.sp, color = Color.DarkGray)
+            Text(text = "سعر (ريال)", fontSize = 8.sp, color = Color.DarkGray)
         }
 
-        Box(modifier = Modifier.width(1.dp).height(28.dp).background(LedgerBorderColor))
+        Box(modifier = Modifier.width(1.dp).height(24.dp).background(LedgerBorderColor))
 
         // القيمة الإجمالية / Total Amount (ريال)
         Column(
             modifier = Modifier
-                .weight(1.5f)
-                .padding(horizontal = 2.dp),
+                .weight(1.3f)
+                .padding(horizontal = 1.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Text(text = "القيمة الإجمالية", fontWeight = FontWeight.Bold, fontSize = 10.sp, color = Color.Black)
-            Text(text = "Total Amount (ريال)", fontSize = 8.sp, color = Color.DarkGray)
+            Text(text = "الإجمالي", fontWeight = FontWeight.Bold, fontSize = 10.sp, color = Color.Black)
+            Text(text = "مجموع (ريال)", fontSize = 8.sp, color = Color.DarkGray)
         }
 
         Spacer(modifier = Modifier.width(28.dp)) // Space for delete icon alignment
@@ -344,6 +344,7 @@ fun InvoiceTableItemRow(
     onDescriptionChange: (String) -> Unit,
     onQuantityChange: (Double) -> Unit,
     onUnitPriceChange: (Double) -> Unit,
+    onTotalAmountChange: (Double) -> Unit,
     onDelete: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -360,7 +361,7 @@ fun InvoiceTableItemRow(
                 )
             }
             .background(Color.White)
-            .padding(vertical = 4.dp),
+            .padding(vertical = 3.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         // Description field (between lines)
@@ -368,20 +369,20 @@ fun InvoiceTableItemRow(
             value = description,
             onValueChange = onDescriptionChange,
             modifier = Modifier
-                .weight(2.4f)
-                .padding(horizontal = 4.dp)
+                .weight(2.2f)
+                .padding(horizontal = 2.dp)
                 .testTag("item_desc_$index"),
-            textStyle = TextStyle(fontSize = 12.sp, color = Color.Black, textAlign = TextAlign.Start),
+            textStyle = TextStyle(fontSize = 11.sp, color = Color.Black, textAlign = TextAlign.Start),
             singleLine = true,
             decorationBox = { inner ->
                 if (description.isEmpty()) {
-                    Text("اكتب الصنف...", color = Color.LightGray, fontSize = 11.sp)
+                    Text("اكتب الصنف...", color = Color.LightGray, fontSize = 10.sp)
                 }
                 inner()
             }
         )
 
-        Box(modifier = Modifier.width(1.dp).height(24.dp).background(PaperLineColor))
+        Box(modifier = Modifier.width(1.dp).height(22.dp).background(PaperLineColor))
 
         // Quantity field
         BasicTextField(
@@ -391,32 +392,32 @@ fun InvoiceTableItemRow(
                 onQuantityChange(num)
             },
             modifier = Modifier
-                .weight(0.9f)
-                .padding(horizontal = 2.dp)
+                .weight(0.8f)
+                .padding(horizontal = 1.dp)
                 .testTag("item_qty_$index"),
-            textStyle = TextStyle(fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = Color.Black, textAlign = TextAlign.Center),
+            textStyle = TextStyle(fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = Color.Black, textAlign = TextAlign.Center),
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
             singleLine = true,
             decorationBox = { inner ->
-                if (quantity == 0.0) Text("1", color = Color.LightGray, fontSize = 11.sp, textAlign = TextAlign.Center)
+                if (quantity == 0.0) Text("1", color = Color.LightGray, fontSize = 10.sp, textAlign = TextAlign.Center)
                 inner()
             }
         )
 
         Box(modifier = Modifier.width(1.dp).height(24.dp).background(PaperLineColor))
 
-        // Unit Price field
+        // Unit Price field (سعر الوحدة)
         BasicTextField(
-            value = if (unitPrice == 0.0) "" else if (unitPrice % 1 == 0.0) unitPrice.toInt().toString() else unitPrice.toString(),
+            value = if (unitPrice == 0.0) "" else if (unitPrice % 1 == 0.0) unitPrice.toInt().toString() else String.format(Locale.US, "%.2f", unitPrice),
             onValueChange = { str ->
                 val num = str.toDoubleOrNull() ?: 0.0
                 onUnitPriceChange(num)
             },
             modifier = Modifier
-                .weight(1.3f)
+                .weight(1.2f)
                 .padding(horizontal = 2.dp)
                 .testTag("item_price_$index"),
-            textStyle = TextStyle(fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = Color.Black, textAlign = TextAlign.Center),
+            textStyle = TextStyle(fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = Color.Black, textAlign = TextAlign.Center),
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
             singleLine = true,
             decorationBox = { inner ->
@@ -427,18 +428,29 @@ fun InvoiceTableItemRow(
 
         Box(modifier = Modifier.width(1.dp).height(24.dp).background(PaperLineColor))
 
-        // Total Amount (calculated automatically)
-        Text(
-            text = String.format(Locale.US, "%.2f", totalAmount),
+        // Total Amount field (القيمة الإجمالية - متاحة للإدخال المباشر)
+        BasicTextField(
+            value = if (totalAmount == 0.0) "" else if (totalAmount % 1 == 0.0) totalAmount.toInt().toString() else String.format(Locale.US, "%.2f", totalAmount),
+            onValueChange = { str ->
+                val num = str.toDoubleOrNull() ?: 0.0
+                onTotalAmountChange(num)
+            },
             modifier = Modifier
-                .weight(1.5f)
-                .padding(horizontal = 4.dp),
-            style = TextStyle(
-                fontSize = 12.sp,
+                .weight(1.3f)
+                .padding(horizontal = 2.dp)
+                .testTag("item_total_$index"),
+            textStyle = TextStyle(
+                fontSize = 11.sp,
                 fontWeight = FontWeight.Bold,
-                color = Color(0xFF0F172A),
+                color = Color(0xFF1E40AF),
                 textAlign = TextAlign.Center
-            )
+            ),
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+            singleLine = true,
+            decorationBox = { inner ->
+                if (totalAmount == 0.0) Text("0.0", color = Color.LightGray, fontSize = 11.sp, textAlign = TextAlign.Center)
+                inner()
+            }
         )
 
         IconButton(

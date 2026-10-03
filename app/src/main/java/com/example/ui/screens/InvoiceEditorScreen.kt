@@ -262,25 +262,16 @@ fun InvoiceEditorScreen(
                             onUnitPriceChange = { price ->
                                 viewModel.updateInvoiceEntry(index, entry.description, entry.quantity, price)
                             },
+                            onTotalAmountChange = { total ->
+                                viewModel.updateInvoiceEntryByTotal(index, entry.description, entry.quantity, total)
+                            },
                             onDelete = {
                                 viewModel.removeEntry(index)
                             }
                         )
                     }
 
-                    // أسطر فارغة مسطرة إضافية لمحاكاة الدفتر إذا كانت الأسطر قليلة
-                    val emptyLinesCount = maxOf(0, 5 - activeEntries.size)
-                    repeat(emptyLinesCount) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(36.dp)
-                                .border(0.5.dp, Color(0xFFE2E8F0))
-                                .background(PaperCreamWhite)
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.height(8.dp))
+                    Spacer(modifier = Modifier.height(4.dp))
 
                     // زر إضافة صنف جديد بين الأسطر
                     Button(
@@ -289,7 +280,7 @@ fun InvoiceEditorScreen(
                             .fillMaxWidth()
                             .testTag("add_item_row_button"),
                         shape = RoundedCornerShape(6.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF334155))
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1E40AF))
                     ) {
                         Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))
                         Spacer(modifier = Modifier.width(6.dp))

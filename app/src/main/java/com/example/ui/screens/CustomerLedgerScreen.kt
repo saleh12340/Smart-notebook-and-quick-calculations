@@ -303,19 +303,7 @@ fun CustomerLedgerScreen(
                         )
                     }
 
-                    // أسطر مسطرة فارغة إضافية لجمالية الدفتر
-                    val emptyLinesCount = maxOf(0, 4 - activeEntries.size)
-                    repeat(emptyLinesCount) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(36.dp)
-                                .border(0.5.dp, Color(0xFFE2E8F0))
-                                .background(PaperCreamWhite)
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.height(8.dp))
+                    Spacer(modifier = Modifier.height(4.dp))
 
                     // زر إضافة قيد / عملية جديدة
                     Button(

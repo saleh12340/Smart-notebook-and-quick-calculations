@@ -109,6 +109,7 @@ fun HomeScreen(
     val totalInvoicesSum = allDocs.filter { it.document.docType == DocumentType.SALES_INVOICE }.sumOf { it.invoiceTotal }
     val totalLedgerDebit = allDocs.filter { it.document.docType == DocumentType.CUSTOMER_LEDGER }.sumOf { it.totalDebit }
     val totalLedgerCredit = allDocs.filter { it.document.docType == DocumentType.CUSTOMER_LEDGER }.sumOf { it.totalCredit }
+    val notesCount = allDocs.count { it.document.docType == DocumentType.LINED_NOTE }
 
     Scaffold(
         topBar = {
@@ -240,7 +241,8 @@ fun HomeScreen(
             QuickStatsBar(
                 invoicesSum = totalInvoicesSum,
                 ledgerDebit = totalLedgerDebit,
-                ledgerCredit = totalLedgerCredit
+                ledgerCredit = totalLedgerCredit,
+                notesCount = notesCount
             )
 
             // شريط البحث
@@ -423,58 +425,83 @@ fun HomeScreen(
 fun QuickStatsBar(
     invoicesSum: Double,
     ledgerDebit: Double,
-    ledgerCredit: Double
+    ledgerCredit: Double,
+    notesCount: Int
 ) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 12.dp, vertical = 6.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
+            .padding(horizontal = 8.dp, vertical = 4.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp)
     ) {
+        // فواتير المبيعات (أزرق)
         Card(
             modifier = Modifier.weight(1f),
             colors = CardDefaults.cardColors(containerColor = Color(0xFFEFF6FF)),
-            shape = RoundedCornerShape(10.dp)
+            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFBFDBFE)),
+            shape = RoundedCornerShape(8.dp)
         ) {
-            Column(modifier = Modifier.padding(10.dp)) {
-                Text("إجمالي المبيعات", fontSize = 10.sp, color = Color(0xFF1E3A8A), fontWeight = FontWeight.SemiBold)
+            Column(modifier = Modifier.padding(6.dp)) {
+                Text("المبيعات", fontSize = 9.sp, color = Color(0xFF1E40AF), fontWeight = FontWeight.Bold)
                 Text(
-                    text = String.format(Locale.US, "%.1f ريال", invoicesSum),
-                    fontSize = 14.sp,
+                    text = String.format(Locale.US, "%.0f ر.ي", invoicesSum),
+                    fontSize = 12.sp,
                     fontWeight = FontWeight.ExtraBold,
-                    color = Color(0xFF1E3A8A)
+                    color = Color(0xFF1E40AF)
                 )
             }
         }
 
+        // أرصدة مدينة - عليهم (أحمر)
         Card(
             modifier = Modifier.weight(1f),
             colors = CardDefaults.cardColors(containerColor = Color(0xFFFEF2F2)),
-            shape = RoundedCornerShape(10.dp)
+            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFFECACA)),
+            shape = RoundedCornerShape(8.dp)
         ) {
-            Column(modifier = Modifier.padding(10.dp)) {
-                Text("أرصدة مدينة (عليهم)", fontSize = 10.sp, color = Color(0xFFDC2626), fontWeight = FontWeight.SemiBold)
+            Column(modifier = Modifier.padding(6.dp)) {
+                Text("عليهم (مدين)", fontSize = 9.sp, color = Color(0xFFDC2626), fontWeight = FontWeight.Bold)
                 Text(
-                    text = String.format(Locale.US, "%.1f ريال", ledgerDebit),
-                    fontSize = 14.sp,
+                    text = String.format(Locale.US, "%.0f ر.ي", ledgerDebit),
+                    fontSize = 12.sp,
                     fontWeight = FontWeight.ExtraBold,
                     color = Color(0xFFDC2626)
                 )
             }
         }
 
+        // أرصدة دائنة - لهم (أخضر)
         Card(
             modifier = Modifier.weight(1f),
             colors = CardDefaults.cardColors(containerColor = Color(0xFFF0FDF4)),
-            shape = RoundedCornerShape(10.dp)
+            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFBBF7D0)),
+            shape = RoundedCornerShape(8.dp)
         ) {
-            Column(modifier = Modifier.padding(10.dp)) {
-                Text("أرصدة دائنة (لهم)", fontSize = 10.sp, color = Color(0xFF16A34A), fontWeight = FontWeight.SemiBold)
+            Column(modifier = Modifier.padding(6.dp)) {
+                Text("لهم (دائن)", fontSize = 9.sp, color = Color(0xFF047857), fontWeight = FontWeight.Bold)
                 Text(
-                    text = String.format(Locale.US, "%.1f ريال", ledgerCredit),
-                    fontSize = 14.sp,
+                    text = String.format(Locale.US, "%.0f ر.ي", ledgerCredit),
+                    fontSize = 12.sp,
                     fontWeight = FontWeight.ExtraBold,
-                    color = Color(0xFF16A34A)
+                    color = Color(0xFF047857)
+                )
+            }
+        }
+
+        // ملاحظات دفترية (عسلي/ذهبي)
+        Card(
+            modifier = Modifier.weight(0.9f),
+            colors = CardDefaults.cardColors(containerColor = Color(0xFFFFFBEB)),
+            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFFDE68A)),
+            shape = RoundedCornerShape(8.dp)
+        ) {
+            Column(modifier = Modifier.padding(6.dp)) {
+                Text("الملاحظات", fontSize = 9.sp, color = Color(0xFFB45309), fontWeight = FontWeight.Bold)
+                Text(
+                    text = "$notesCount ملاحظة",
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = Color(0xFFB45309)
                 )
             }
         }
@@ -493,10 +520,28 @@ fun DocumentCardItem(
     val doc = docWithEntries.document
     val entries = docWithEntries.entries
 
-    val badgeColor = when (doc.docType) {
-        DocumentType.SALES_INVOICE -> Color(0xFF1E3A8A)
-        DocumentType.CUSTOMER_LEDGER -> Color(0xFF16A34A)
-        DocumentType.LINED_NOTE -> Color(0xFFD97706)
+    val themeColor = when (doc.docType) {
+        DocumentType.SALES_INVOICE -> Color(0xFF1E40AF)
+        DocumentType.CUSTOMER_LEDGER -> Color(0xFF047857)
+        DocumentType.LINED_NOTE -> Color(0xFFB45309)
+    }
+
+    val cardBg = when (doc.docType) {
+        DocumentType.SALES_INVOICE -> Color(0xFFF8FAFC)
+        DocumentType.CUSTOMER_LEDGER -> Color(0xFFF0FDF4)
+        DocumentType.LINED_NOTE -> Color(0xFFFFFBEB)
+    }
+
+    val cardBorder = when (doc.docType) {
+        DocumentType.SALES_INVOICE -> Color(0xFF93C5FD)
+        DocumentType.CUSTOMER_LEDGER -> Color(0xFFA7F3D0)
+        DocumentType.LINED_NOTE -> Color(0xFFFDE68A)
+    }
+
+    val typeIcon = when (doc.docType) {
+        DocumentType.SALES_INVOICE -> Icons.Default.ReceiptLong
+        DocumentType.CUSTOMER_LEDGER -> Icons.AutoMirrored.Filled.MenuBook
+        DocumentType.LINED_NOTE -> Icons.Default.EditNote
     }
 
     val typeLabel = when (doc.docType) {
@@ -511,26 +556,38 @@ fun DocumentCardItem(
             .clickable { onClick() }
             .testTag("document_card_${doc.id}"),
         shape = RoundedCornerShape(10.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
+        colors = CardDefaults.cardColors(containerColor = cardBg),
+        border = androidx.compose.foundation.BorderStroke(1.2.dp, cardBorder),
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
-        Column(modifier = Modifier.padding(12.dp)) {
-            // الصف العلوي: النوع ورقم الفاتورة والتاريخ
+        Column(modifier = Modifier.padding(10.dp)) {
+            // الصف العلوي: الشارة والأيقونة ورقم الفاتورة والتاريخ
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Surface(
-                    color = badgeColor.copy(alpha = 0.12f),
+                    color = themeColor,
                     shape = RoundedCornerShape(6.dp)
                 ) {
-                    Text(
-                        text = typeLabel,
-                        color = badgeColor,
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
-                    )
+                    Row(
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = typeIcon,
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier.size(13.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = typeLabel,
+                            color = Color.White,
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
                 }
 
                 Spacer(modifier = Modifier.width(8.dp))
