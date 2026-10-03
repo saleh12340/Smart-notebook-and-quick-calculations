@@ -72,7 +72,14 @@ object ThermalPrintHelper {
 
             // 3. تحويل الصورة إلى أوامر نقطية ESC/POS (GS v 0)
             val escPosBytes = bitmapToEscPosRaster(bitmap)
-            outputStream.write(escPosBytes)
+            // إرسال الصورة على دفعات صغيرة لتجنب امتلاء مخزن بعض طابعات 58/80mm.
+            var offset = 0
+            while (offset < escPosBytes.size) {
+                val end = minOf(offset + 4096, escPosBytes.size)
+                outputStream.write(escPosBytes, offset, end - offset)
+                outputStream.flush()
+                offset = end
+            }
 
             // 4. تغذية الورق 4 أسطر وقطع الورق
             outputStream.write(byteArrayOf(0x1B, 0x64, 0x04)) // تغذية 4 أسطر
