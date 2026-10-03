@@ -66,6 +66,7 @@ import com.example.ui.components.PaperHeaderBackground
 import com.example.ui.components.PaperLineColor
 import com.example.ui.components.PaperRedMargin
 import com.example.ui.components.StampRed
+import com.example.data.storage.AppStorageHelper
 import com.example.ui.viewmodel.CurrentScreen
 import com.example.ui.viewmodel.DaftarViewModel
 
@@ -79,6 +80,22 @@ fun LinedNoteScreen(
     val context = LocalContext.current
     val activeDoc by viewModel.activeDocument.collectAsState()
     val isSpeaking by viewModel.isSpeaking.collectAsState()
+    val imagePicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        if (uri != null) {
+            val copied = AppStorageHelper.copyUriToDownloads(
+                context = context,
+                sourceUri = uri,
+                fileName = "note_image_${System.currentTimeMillis()}.jpg",
+                mimeType = "image/jpeg"
+            )
+            if (copied != null) {
+                viewModel.updateDocumentHeader(activeDoc.copy(stampImageUrl = copied.toString()))
+                Toast.makeText(context, "تم استيراد الصورة وحفظ نسخة منها داخل مجلد التطبيق في Downloads", Toast.LENGTH_LONG).show()
+            } else {
+                Toast.makeText(context, "تعذر استيراد الصورة", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
 
     BackHandler {
         viewModel.navigateBack()
@@ -124,6 +141,17 @@ fun LinedNoteScreen(
                     }
                 },
                 actions = {
+                    // استيراد صورة
+                    IconButton(
+                        onClick = { imagePicker.launch("image/*") }
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Image,
+                            contentDescription = "استيراد صورة",
+                            tint = Color.White
+                        )
+                    }
+
                     // قراءة صوتية
                     IconButton(
                         onClick = {
@@ -291,7 +319,19 @@ fun LinedNoteScreen(
                         }
                     }
 
-                    Spacer(modifier = Modifier.height(6.dp))
+                    if (!activeDoc.stampImageUrl.isNullOrBlank()) {
+                        AsyncImage(
+                            model = activeDoc.stampImageUrl,
+                            contentDescription = "الصورة المستوردة",
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(180.dp)
+                                .border(1.dp, LedgerBorderColor, RoundedCornerShape(6.dp))
+                                .clip(RoundedCornerShape(6.dp)),
+                            contentScale = androidx.compose.ui.layout.ContentScale.Fit
+                        )
+                        Spacer(modifier = Modifier.height(6.dp))
+                    }
 
                     // 2. سطر اسم العميل أو الشخص المعني بالملاحظة (المطلوب من الأخ / المحترم)
                     CustomerInputLine(
