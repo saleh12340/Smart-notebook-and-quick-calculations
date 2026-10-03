@@ -19,6 +19,7 @@ import android.webkit.WebViewClient
 import com.example.data.model.DocumentType
 import com.example.data.model.DocumentWithEntries
 import com.example.data.model.PaymentType
+import com.example.data.storage.AppStorageHelper
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.ByteArrayOutputStream
@@ -100,7 +101,7 @@ object ThermalPrintHelper {
         val pad = 12f
 
         // تقدير الارتفاع بناء على عدد الأصناف
-        val estimatedHeight = 550 + (entries.size * 42) + 300
+        val estimatedHeight = 420 + (entries.size * 34) + 180
         val bitmap = Bitmap.createBitmap(width, estimatedHeight, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bitmap)
         canvas.drawColor(Color.WHITE)
@@ -206,7 +207,7 @@ object ThermalPrintHelper {
         val tableLeft = pad
         val tableRight = width - pad
         val tableTop = y
-        val rowHeight = 32f
+        val rowHeight = 28f
 
         if (doc.docType == DocumentType.SALES_INVOICE) {
             // توزيع أعمدة الجدول: م (أقصى اليمين) | المادة | الكمية | السعر | الإجمالي (أقصى اليسار)
@@ -468,6 +469,22 @@ object ThermalPrintHelper {
         } catch (e: Exception) {
             android.widget.Toast.makeText(context, "حدث خطأ أثناء تصدير الصورة: ${e.message}", android.widget.Toast.LENGTH_SHORT).show()
         }
+    }
+
+    /**
+     * حفظ نفس صورة المعاينة/الطباعة داخل Downloads/دفتر الفواتير والحسابات/الصور.
+     */
+    fun saveReceiptImageToDownloads(context: Context, bitmap: Bitmap): Uri? {
+        val fileName = "receipt_${System.currentTimeMillis()}.png"
+        val stream = ByteArrayOutputStream()
+        bitmap.compress(Bitmap.CompressFormat.PNG, 100, stream)
+        return AppStorageHelper.saveBytesToDownloads(
+            context = context,
+            bytes = stream.toByteArray(),
+            fileName = fileName,
+            mimeType = "image/png",
+            subFolder = AppStorageHelper.IMAGES_FOLDER
+        )
     }
 
     /**
