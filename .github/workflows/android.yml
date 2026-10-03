@@ -60,6 +60,14 @@ jobs:
 
           ls -lh debug.keystore .env
 
+      - name: Verify Gemini API secret is available
+        if: github.event_name != 'pull_request'
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          if [ -z "$GEMINI_API_KEY" ]; then echo "::error::GEMINI_API_KEY is missing from GitHub Secrets"; exit 1; fi
+          echo "GEMINI_API_KEY is configured (value hidden)."
+
       - name: Run Unit Tests
         run: ./gradlew testDebugUnitTest --no-daemon --stacktrace
 
